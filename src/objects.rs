@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
 use pyo3::types::PyBytes;
 
 use crate::error::map_err;
@@ -81,47 +82,30 @@ impl ObjectId {
     }
 }
 
-// AIDEV-NOTE: Mirror of grit-lib's `ObjectKind { Blob, Tree, Commit, Tag }` as a
-// Python enum. `eq` + `eq_int` make members comparable and give each a stable int
-// discriminant; the Python-facing names are uppercased (COMMIT/TREE/BLOB/TAG).
-// `#[allow(clippy::upper_case_acronyms)]` is required because those member names are
-// the deliberate Python-facing identifiers (and BLOB/TAG read as acronyms to clippy);
-// renaming them would change the public enum API. Variant declaration order also
-// fixes the eq_int discriminants (COMMIT=0..TAG=3) that python/pygrit/__init__.py's
-// IntEnum facade mirrors — keep the two in sync.
-#[pyclass(eq, eq_int, module = "pygrit._pygrit")]
-#[derive(Clone, PartialEq)]
-#[allow(clippy::upper_case_acronyms)]
-pub enum ObjectKind {
-    COMMIT,
-    TREE,
-    BLOB,
-    TAG,
-}
+// AIDEV-NOTE: ObjectKind is a Python enum.IntEnum defined in python/pygrit/__init__.py.
+// Native PyO3 enums lack .name and type-iteration, so kind getters return the IntEnum
+// member instead. We cache the class once and construct members by integer value.
+// The discriminants here MUST match the IntEnum values in __init__.py (asserted by a test).
+static OBJECT_KIND_CLS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
 
-#[pymethods]
-impl ObjectKind {
-    fn __repr__(&self) -> &'static str {
-        match self {
-            ObjectKind::COMMIT => "ObjectKind.COMMIT",
-            ObjectKind::TREE => "ObjectKind.TREE",
-            ObjectKind::BLOB => "ObjectKind.BLOB",
-            ObjectKind::TAG => "ObjectKind.TAG",
-        }
+fn object_kind_discriminant(k: grit_lib::objects::ObjectKind) -> i32 {
+    match k {
+        grit_lib::objects::ObjectKind::Commit => 0,
+        grit_lib::objects::ObjectKind::Tree => 1,
+        grit_lib::objects::ObjectKind::Blob => 2,
+        grit_lib::objects::ObjectKind::Tag => 3,
     }
 }
 
-// AIDEV-NOTE: `#[allow(dead_code)]` is intentional — `from_grit` is consumed by the
-// odb read / parsed-object-view bindings (task 2.6+) that surface a grit-lib
-// ObjectKind to Python. Remove the allow once those callers land.
+// AIDEV-NOTE: `#[allow(dead_code)]` is intentional — `kind_to_py` is consumed by the
+// odb read binding (task 2.6) which surfaces a grit-lib ObjectKind to Python. Remove
+// the allow once that caller lands.
+/// Convert a grit-lib object kind into the public `pygrit.ObjectKind` IntEnum member.
 #[allow(dead_code)]
-impl ObjectKind {
-    pub fn from_grit(k: grit_lib::objects::ObjectKind) -> Self {
-        match k {
-            grit_lib::objects::ObjectKind::Commit => ObjectKind::COMMIT,
-            grit_lib::objects::ObjectKind::Tree => ObjectKind::TREE,
-            grit_lib::objects::ObjectKind::Blob => ObjectKind::BLOB,
-            grit_lib::objects::ObjectKind::Tag => ObjectKind::TAG,
-        }
-    }
+pub fn kind_to_py(py: Python<'_>, k: grit_lib::objects::ObjectKind) -> PyResult<Py<PyAny>> {
+    let cls = OBJECT_KIND_CLS.get_or_try_init(py, || -> PyResult<Py<PyAny>> {
+        Ok(py.import("pygrit")?.getattr("ObjectKind")?.unbind())
+    })?;
+    let member = cls.bind(py).call1((object_kind_discriminant(k),))?;
+    Ok(member.unbind())
 }
