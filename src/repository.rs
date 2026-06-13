@@ -1,12 +1,33 @@
 //! Python wrapper over `grit_lib::repo::Repository`.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::error::map_err;
+
+// AIDEV-NOTE: Accept str | bytes | os.PathLike path inputs (design §5). On Unix,
+// bytes map to an OsString 1:1 (exact non-UTF-8 path fidelity); str/os.PathLike go
+// through PyO3's PathBuf extractor (surrogateescape via fsdecode). We try the
+// PathBuf extractor first so os.PathLike (and str) take the standard path, and fall
+// back to raw bytes only for `bytes` inputs. This touches Python, so callers MUST
+// run it BEFORE releasing the GIL with allow_threads.
+fn extract_path(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
+    if let Ok(p) = obj.extract::<std::path::PathBuf>() {
+        return Ok(p);
+    }
+    if let Ok(b) = obj.extract::<Vec<u8>>() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            return Ok(std::path::PathBuf::from(std::ffi::OsString::from_vec(b)));
+        }
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "path must be str, bytes, or os.PathLike",
+    ))
+}
 
 // AIDEV-NOTE: We hold an `Arc<grit_lib::repo::Repository>` so the `.odb` accessor can
 // hand out an `Odb` that clones the Arc and outlives this Python `Repository` handle
@@ -25,7 +46,9 @@ impl Repository {
     // this compiles. These are not hot paths, but releasing the GIL keeps other
     // Python threads live during the filesystem walk.
     #[staticmethod]
-    fn discover(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+    fn discover(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // extract_path touches Python, so do it BEFORE releasing the GIL.
+        let path = extract_path(path)?;
         let repo = py
             .allow_threads(|| grit_lib::repo::Repository::discover(Some(&path)))
             .map_err(map_err)?;
@@ -36,7 +59,14 @@ impl Repository {
 
     #[staticmethod]
     #[pyo3(signature = (git_dir, work_tree=None))]
-    fn open(py: Python<'_>, git_dir: PathBuf, work_tree: Option<PathBuf>) -> PyResult<Self> {
+    fn open(
+        py: Python<'_>,
+        git_dir: &Bound<'_, PyAny>,
+        work_tree: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        // extract_path touches Python, so resolve both paths BEFORE releasing the GIL.
+        let git_dir = extract_path(git_dir)?;
+        let work_tree = work_tree.map(extract_path).transpose()?;
         let repo = py
             .allow_threads(|| grit_lib::repo::Repository::open(&git_dir, work_tree.as_deref()))
             .map_err(map_err)?;

@@ -209,11 +209,11 @@ class ConfigSet:
 @final
 class Repository:
     @staticmethod
-    def discover(path: str | os.PathLike[str]) -> Repository: ...
+    def discover(path: str | bytes | os.PathLike[str]) -> Repository: ...
     @staticmethod
     def open(
-        git_dir: str | os.PathLike[str],
-        work_tree: str | os.PathLike[str] | None = ...,
+        git_dir: str | bytes | os.PathLike[str],
+        work_tree: str | bytes | os.PathLike[str] | None = ...,
     ) -> Repository: ...
     @property
     def git_dir(self) -> bytes: ...
