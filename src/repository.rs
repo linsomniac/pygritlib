@@ -388,8 +388,13 @@ impl Repository {
         let entries = py
             .allow_threads(|| grit_lib::diff::diff_trees(&repo.odb, Some(&ta), Some(&tb), ""))
             .map_err(map_err)?;
-        let stats = py.allow_threads(|| Self::compute_diff_stats(&repo.odb, &entries))?;
-        Ok(crate::diff::Diff::from_entries(entries, stats))
+        // AIDEV-NOTE: LAZINESS (FIX 5). We do NOT compute stats here — `Diff` carries the repo
+        // Arc + entry oids and computes `DiffStats` on FIRST `.stats` access (and caches it).
+        // So callers that only iterate statuses never pay for the blob reads.
+        Ok(crate::diff::Diff::from_entries(
+            Arc::clone(&self.inner),
+            entries,
+        ))
     }
 }
 
@@ -458,19 +463,25 @@ impl Repository {
     // here but ins=1/del=1 in git. We accept this (the `count_changes` path is otherwise
     // verified-correct); exact parity would require splitting on `\n` only and diffing those
     // segments ourselves. See the xfail in tests/test_diff.py that encodes the divergence.
-    fn compute_diff_stats(
+    // AIDEV-NOTE: LAZINESS (FIX 5). This is a `pub(crate)` FREE function (not a method) taking
+    // the raw old/new oid pairs + the file count, so `Diff::stats` (src/diff.rs) can call it
+    // on FIRST `.stats` access — `diff()` no longer computes stats eagerly. The caller owns the
+    // GIL-release (allow_threads) around the call. `files_changed` is passed in (the number of
+    // diff entries) since this function no longer sees the entries themselves.
+    pub(crate) fn compute_diff_stats(
         odb: &grit_lib::odb::Odb,
-        entries: &[grit_lib::diff::DiffEntry],
+        oid_pairs: &[(grit_lib::objects::ObjectId, grit_lib::objects::ObjectId)],
+        files_changed: usize,
     ) -> PyResult<crate::diff::DiffStats> {
         let mut insertions = 0usize;
         let mut deletions = 0usize;
 
-        for e in entries {
+        for (old_oid, new_oid) in oid_pairs {
             // Read each side's content. A read error propagates (raises) instead of lying about
             // counts; a non-blob (gitlink) side yields the synthesized `Subproject commit <oid>`
             // line so it counts like `git --numstat` (see read_blob_bytes).
-            let old_bytes = read_blob_bytes(odb, &e.old_oid)?;
-            let new_bytes = read_blob_bytes(odb, &e.new_oid)?;
+            let old_bytes = read_blob_bytes(odb, old_oid)?;
+            let new_bytes = read_blob_bytes(odb, new_oid)?;
 
             if grit_lib::merge_file::is_binary(&old_bytes)
                 || grit_lib::merge_file::is_binary(&new_bytes)
@@ -487,7 +498,7 @@ impl Repository {
         }
 
         Ok(crate::diff::DiffStats::new(
-            entries.len(),
+            files_changed,
             insertions,
             deletions,
         ))
@@ -504,7 +515,7 @@ impl Repository {
 //     diffstat matches `git --numstat` (gitlink add=1/0, modify=1/1, delete=0/1).
 //   - Err(..)         if the ODB read FAILS — propagated so `.stats` RAISES rather than returning
 //     silently-wrong counts (a corrupt/missing object must not be swallowed as empty).
-fn read_blob_bytes(
+pub(crate) fn read_blob_bytes(
     odb: &grit_lib::odb::Odb,
     oid: &grit_lib::objects::ObjectId,
 ) -> PyResult<Vec<u8>> {

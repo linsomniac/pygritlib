@@ -222,11 +222,35 @@ def test_diffstat_propagates_read_error(
     a = pygrit.ObjectId.from_hex(empty_tree)
     b = pygrit.ObjectId.from_hex(bad_tree)
     # The missing-blob read for stats must propagate as an error (not silently empty).
-    # Stats are computed eagerly today, so this raises at diff(); if stats ever go lazy
-    # (FIX 5) it raises at .stats. Either location is acceptable — both are inside the block.
+    # Stats are LAZY (FIX 5): diff() itself succeeds (it does not read the blob) and the
+    # error surfaces on first .stats access. The block tolerates either location.
     with pytest.raises(pygrit.GritError):
         d = pyrepo.diff(a, b)
         _ = d.stats
+
+
+def test_diffstat_is_lazy(diff_repo: Path) -> None:
+    """`.stats` is computed lazily and cached; iterating statuses needs no blob reads.
+
+    AIDEV-NOTE: FIX 5 — diff() no longer computes stats eagerly. We assert that (a) a Diff
+    can be fully iterated for statuses without touching .stats, and (b) repeated .stats
+    accesses return consistent (cached) values. The missing-blob test above separately
+    proves the work is deferred (the error only surfaces on .stats access).
+    """
+    import pygrit
+
+    repo = pygrit.Repository.discover(str(diff_repo))
+    d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
+    # Iterate statuses WITHOUT accessing .stats (no blob reads needed).
+    assert sorted(e.status for e in d) == ["A", "D", "M"]
+    # First .stats computes; a second access returns the same cached values.
+    s1 = d.stats
+    s2 = d.stats
+    assert (s1.files_changed, s1.insertions, s1.deletions) == (
+        s2.files_changed,
+        s2.insertions,
+        s2.deletions,
+    )
 
 
 @pytest.mark.xfail(

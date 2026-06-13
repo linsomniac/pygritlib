@@ -140,10 +140,19 @@ impl DiffStats {
 }
 
 /// A parsed tree diff: an iterable, len-able collection of `DiffEntry` plus `.stats`.
+// AIDEV-NOTE: LAZY STATS (FIX 5). `Diff` carries the repo `Arc` and the per-entry old/new
+// oids so it can compute `DiffStats` on FIRST `.stats` access (reading the changed blobs),
+// rather than eagerly at `diff()` time. Iterating statuses alone therefore never pays for the
+// blob reads. The result is cached in a `OnceLock` so repeated `.stats` reads are free, and a
+// FAILED computation is NOT cached (errors are rare; recomputing lets a transient read error
+// re-surface and avoids storing a non-Clone PyErr). The `Arc<Repository>` keeps the odb alive
+// independently of the parent Python `Repository` handle (design §6). `entries` (statuses +
+// paths + oids) lives in its own `Arc<[DiffEntryData]>` shared with the iterators.
 #[pyclass(module = "pygrit._pygrit")]
 pub struct Diff {
+    repo: Arc<grit_lib::repo::Repository>,
     entries: Arc<[DiffEntryData]>,
-    stats: DiffStatsData,
+    stats: std::sync::OnceLock<DiffStatsData>,
 }
 
 #[pymethods]
@@ -160,20 +169,44 @@ impl Diff {
         }
     }
 
-    /// The diffstat summary (`DiffStats`) for this diff.
+    /// The diffstat summary (`DiffStats`) for this diff (computed lazily on first access).
+    // AIDEV-NOTE: First access computes the stats with the GIL RELEASED (blob reads), then
+    // caches. A read error PROPAGATES (raises) and is not cached, so `.stats` never returns
+    // silently-wrong counts. Concurrent first-accessors may each compute once (OnceLock only
+    // guarantees a single STORED value, not a single computation) — acceptable: the read is
+    // idempotent and the work is bounded by the changed-file set.
     #[getter]
-    fn stats(&self) -> DiffStats {
-        DiffStats {
-            data: self.stats.clone(),
+    fn stats(&self, py: Python<'_>) -> PyResult<DiffStats> {
+        if let Some(cached) = self.stats.get() {
+            return Ok(DiffStats {
+                data: cached.clone(),
+            });
         }
+        let oid_pairs: Vec<(grit_lib::objects::ObjectId, grit_lib::objects::ObjectId)> = self
+            .entries
+            .iter()
+            .map(|e| (e.old_oid, e.new_oid))
+            .collect();
+        let files_changed = self.entries.len();
+        let repo = Arc::clone(&self.repo);
+        let computed = py.allow_threads(|| {
+            crate::repository::Repository::compute_diff_stats(&repo.odb, &oid_pairs, files_changed)
+        })?;
+        // Cache the successful result (first writer wins; a racing writer's value is discarded).
+        let _ = self.stats.set(computed.data.clone());
+        Ok(computed)
     }
 }
 
 impl Diff {
     // AIDEV-NOTE: Map grit's owned Vec<DiffEntry> into our Arc<[DiffEntryData]>. status via
     // `DiffStatus::letter()`; paths via `Option<String>` -> `Option<Vec<u8>>` (into_bytes).
-    // The stats are computed separately (in repository.rs, which has the odb) and passed in.
-    pub fn from_entries(entries: Vec<grit_lib::diff::DiffEntry>, stats: DiffStats) -> Self {
+    // Stats are NOT computed here (lazy, FIX 5): we keep the repo Arc + the entry oids so the
+    // `.stats` getter can compute them on first access.
+    pub fn from_entries(
+        repo: Arc<grit_lib::repo::Repository>,
+        entries: Vec<grit_lib::diff::DiffEntry>,
+    ) -> Self {
         let v: Vec<DiffEntryData> = entries
             .into_iter()
             .map(|e| DiffEntryData {
@@ -185,8 +218,9 @@ impl Diff {
             })
             .collect();
         Self {
+            repo,
             entries: Arc::from(v),
-            stats: stats.data,
+            stats: std::sync::OnceLock::new(),
         }
     }
 }
