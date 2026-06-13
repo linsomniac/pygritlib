@@ -74,6 +74,22 @@ impl Repository {
         }
     }
 
+    // AIDEV-NOTE: loads the effective config (system+global+local, git-like) on EACH
+    // `.config` access — it reads the cascade files; cache at the call site if accessed
+    // repeatedly. `include_system=true` matches git's effective resolution; the host
+    // `/etc/gitconfig` cannot make tests non-deterministic for repo-local-set keys because
+    // Local scope WINS LAST over System/Global (see ConfigSet::get, last-wins). The load
+    // releases the GIL (filesystem reads + parse). The returned `ConfigSet` OWNS its entries,
+    // so it outlives this Repository handle.
+    #[getter]
+    fn config(&self, py: Python<'_>) -> PyResult<crate::config::ConfigSet> {
+        let git_dir = self.inner.git_dir.clone();
+        let cfg = py
+            .allow_threads(|| grit_lib::config::ConfigSet::load(Some(&git_dir), true))
+            .map_err(map_err)?;
+        Ok(crate::config::ConfigSet::new(cfg))
+    }
+
     // AIDEV-NOTE: Read any object then `parse_commit` over its bytes. A non-commit oid
     // parses-fail → InvalidObjectError (acceptable: the caller asked for a commit). The
     // odb read releases the GIL; parse_commit runs under the GIL (it touches Python only

@@ -7,6 +7,7 @@
 
 use pyo3::prelude::*;
 
+mod config;
 mod diff;
 mod error;
 mod objects;
@@ -38,6 +39,7 @@ fn _pygrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<refs::Reference>()?;
     m.add_class::<refs::ReferenceIter>()?;
     m.add_class::<repository::Repository>()?;
+    m.add_class::<config::ConfigSet>()?;
     m.add_class::<diff::Diff>()?;
     m.add_class::<diff::DiffEntry>()?;
     m.add_class::<diff::DiffStats>()?;
