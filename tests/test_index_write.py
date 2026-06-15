@@ -59,3 +59,24 @@ def test_index_add_entry_raw(tmp_path, git_env):
     idx.add_entry(pylibgrit.IndexEntry(b"b.txt", blob, 0o100644))
     idx.write()
     assert "b.txt" in _ls_files_stage(repo, git_env)
+
+
+def test_write_tree_matches_git(tmp_path, git_env):
+    import pylibgrit
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _init(repo, git_env)
+    pg = pylibgrit.Repository.open(str(repo / ".git"))
+    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+
+    idx = pg.index()
+    idx.add(b"a.txt", blob, 0o100644)
+    idx.write()
+    tree = idx.write_tree()
+
+    git_tree = subprocess.run(
+        ["git", "write-tree"], cwd=repo, env=git_env,
+        stdout=subprocess.PIPE, check=True,
+    ).stdout.decode().strip()
+    assert tree.hex == git_tree

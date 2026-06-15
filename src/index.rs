@@ -158,6 +158,17 @@ impl Index {
         self.inner.lock().unwrap().remove(&path)
     }
 
+    // AIDEV-NOTE: Build a tree object from the current in-memory index and return its oid
+    // (== `git write-tree`). prefix="" means the whole index from the root; writes the tree (and
+    // any sub-trees) into the odb. Runs under the GIL — the MutexGuard is !Send so it cannot
+    // cross allow_threads. (A future optimization could clone the Index to release the GIL.)
+    fn write_tree(&self) -> PyResult<ObjectId> {
+        let guard = self.inner.lock().unwrap();
+        let oid = grit_lib::write_tree::write_tree_from_index(&self.repo.odb, &guard, "")
+            .map_err(map_err)?;
+        Ok(ObjectId::from_inner(oid))
+    }
+
     // AIDEV-NOTE: Persist the index. `path=None` writes the repo's default index (via
     // Repository::write_index, which honors sparse-index collapsing); an explicit path uses
     // Index::write directly. Runs under the GIL — a std MutexGuard is !Send so it cannot be held
