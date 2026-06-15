@@ -1,8 +1,11 @@
 //! Python wrappers over grit-lib's index (`Index`, `IndexEntry`) write surface.
 
+use std::sync::{Arc, Mutex};
+
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::error::map_err;
 use crate::objects::ObjectId;
 
 // AIDEV-NOTE: Wraps grit_lib::index::IndexEntry (a 15-field struct). The constructor exposes
@@ -101,5 +104,76 @@ impl IndexEntry {
     }
 }
 
-// AIDEV-NOTE: The Index pyclass and its helpers are added in Tasks 4–7; this file is the single
-// home for the index write surface.
+// AIDEV-NOTE: `Index` owns a grit_lib::index::Index behind a Mutex (binding-owned mutable
+// value; grit's Index mutators take &mut self) plus an Arc<Repository> so write_tree (Task 5) can
+// reach the odb and write() can target the repo's default index path. Index methods run UNDER the
+// GIL: a std MutexGuard is !Send and cannot be held across allow_threads, and Phase A index ops
+// are fast enough that this is fine.
+#[pyclass(module = "pylibgrit._pylibgrit")]
+pub struct Index {
+    inner: Mutex<grit_lib::index::Index>,
+    repo: Arc<grit_lib::repo::Repository>,
+}
+
+impl Index {
+    pub fn new_loaded(inner: grit_lib::index::Index, repo: Arc<grit_lib::repo::Repository>) -> Self {
+        Self {
+            inner: Mutex::new(inner),
+            repo,
+        }
+    }
+}
+
+#[pymethods]
+impl Index {
+    // AIDEV-NOTE: Add a synthetic entry (blob already in the odb). Stat fields are zeroed (the
+    // commit_tree.rs pattern); `flags` carries the path length so the in-memory entry is
+    // well-formed, though the writer recomputes it. add_or_replace upserts by (path, stage 0).
+    fn add(&self, path: Vec<u8>, oid: ObjectId, mode: u32) {
+        let entry = grit_lib::index::IndexEntry {
+            ctime_sec: 0,
+            ctime_nsec: 0,
+            mtime_sec: 0,
+            mtime_nsec: 0,
+            dev: 0,
+            ino: 0,
+            mode,
+            uid: 0,
+            gid: 0,
+            size: 0,
+            oid: oid.inner(),
+            flags: (path.len().min(0xFFF)) as u16,
+            flags_extended: None,
+            path,
+            base_index_pos: 0,
+        };
+        self.inner.lock().unwrap().add_or_replace(entry);
+    }
+
+    fn add_entry(&self, entry: PyRef<'_, IndexEntry>) {
+        self.inner.lock().unwrap().add_or_replace(entry.inner.clone());
+    }
+
+    fn remove(&self, path: Vec<u8>) -> bool {
+        self.inner.lock().unwrap().remove(&path)
+    }
+
+    // AIDEV-NOTE: Persist the index. `path=None` writes the repo's default index (via
+    // Repository::write_index, which honors sparse-index collapsing); an explicit path uses
+    // Index::write directly. Runs under the GIL — a std MutexGuard is !Send so it cannot be held
+    // across allow_threads, and index serialization is fast enough that this is fine for Phase A.
+    #[pyo3(signature = (path=None))]
+    fn write(&self, path: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        match path {
+            None => {
+                let mut guard = self.inner.lock().unwrap();
+                self.repo.write_index(&mut guard).map_err(map_err)
+            }
+            Some(p) => {
+                let pathbuf = crate::repository::extract_path(p)?;
+                let guard = self.inner.lock().unwrap();
+                guard.write(&pathbuf).map_err(map_err)
+            }
+        }
+    }
+}

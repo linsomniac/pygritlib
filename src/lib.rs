@@ -30,6 +30,7 @@ fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<objects::TreeIter>()?;
     m.add_class::<objects::Blob>()?;
     m.add_class::<objects::Tag>()?;
+    m.add_class::<index::Index>()?;
     m.add_class::<index::IndexEntry>()?;
     m.add_class::<odb::Odb>()?;
     m.add_class::<refs::Reference>()?;

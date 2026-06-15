@@ -16,7 +16,7 @@ use crate::error::map_err;
 // calls os.fspath but then requires the result be str, so a bytes __fspath__ is rejected
 // upstream). The os.fspath() result is then handled: str -> PathBuf, bytes -> OsString.
 // This touches Python, so callers MUST run it BEFORE releasing the GIL with allow_threads.
-fn extract_path(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
+pub(crate) fn extract_path(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
     if let Ok(p) = obj.extract::<std::path::PathBuf>() {
         return Ok(p);
     }
@@ -263,6 +263,23 @@ impl Repository {
         Ok(crate::refs::ReferenceIter::new(
             Arc::clone(&self.inner),
             entries,
+        ))
+    }
+
+    // AIDEV-NOTE: Load the repo's index into a binding-owned, mutable Index. If no index file
+    // exists yet (fresh repo / bare repo before any staging), start from an empty Index rather
+    // than erroring. We check the conventional `<git_dir>/index` path; GIT_INDEX_FILE overrides
+    // are not honored here (Phase A limitation). The load releases the GIL.
+    fn index(&self, py: Python<'_>) -> PyResult<crate::index::Index> {
+        let index_path = self.inner.git_dir.join("index");
+        let loaded = if index_path.exists() {
+            py.allow_threads(|| self.inner.load_index()).map_err(map_err)?
+        } else {
+            grit_lib::index::Index::new()
+        };
+        Ok(crate::index::Index::new_loaded(
+            loaded,
+            Arc::clone(&self.inner),
         ))
     }
 
