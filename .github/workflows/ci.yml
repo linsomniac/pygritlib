@@ -21,13 +21,13 @@
 #     [dependency-groups] (PEP 735), installed via `uv sync --group dev`.
 #   * build-wheels also installs setup-uv: the sdist step shells out to
 #     `uvx maturin sdist`, so uv must be on PATH (harmless on legs that skip it).
-#   * macOS (macos-14 arm64 + macos-13 x86_64) is best-effort: grit-lib is
+#   * macOS (macos-14 arm64) is best-effort: grit-lib is
 #     Unix-oriented and the deps are pure-Rust, so it is expected to build, but
 #     fail-fast is disabled so a macOS hiccup does not mask Linux results.
 #   * Wheel coverage mirrors most of release.yml's grid: linux glibc x86_64/aarch64,
-#     linux musl x86_64 (Alpine import-smoke only), macOS x86_64 + arm64. The emulated
+#     linux musl x86_64 (Alpine import-smoke only), macOS arm64. The emulated
 #     musl-aarch64 leg is release-only (kept off per-PR CI to avoid a second slow QEMU
-#     build).
+#     build). macOS Intel (x86_64) is not built anywhere — see release.yml.
 #   * aarch64 Linux wheels cross-build inside maturin-action's manylinux
 #     container (manylinux: auto) via emulation — no extra QEMU step is needed
 #     for the build, but that leg does not run the installed-wheel test suite or
@@ -106,10 +106,6 @@ jobs:
             manylinux: musllinux_1_2
             smoke: false
             musl: true # import-smoke only in an Alpine container (native docker)
-          - os: macos-13
-            target: x86_64
-            manylinux: auto
-            smoke: true
           - os: macos-14
             target: aarch64
             manylinux: auto

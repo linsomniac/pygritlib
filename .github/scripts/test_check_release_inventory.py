@@ -30,7 +30,6 @@ def _good_dist(directory: Path, version: str = "0.1.0") -> None:
     )
     _touch(directory, f"pygrit-{version}-cp311-abi3-musllinux_1_2_x86_64.whl")
     _touch(directory, f"pygrit-{version}-cp311-abi3-musllinux_1_2_aarch64.whl")
-    _touch(directory, f"pygrit-{version}-cp311-abi3-macosx_10_12_x86_64.whl")
     _touch(directory, f"pygrit-{version}-cp311-abi3-macosx_11_0_arm64.whl")
 
 
@@ -57,16 +56,16 @@ def test_too_few_wheels_fails(tmp_path: Path) -> None:
     _good_dist(tmp_path)
     (tmp_path / "pygrit-0.1.0-cp311-abi3-macosx_11_0_arm64.whl").unlink()
     errors = check_inventory(tmp_path)
-    assert any("6 wheels" in e for e in errors), errors
+    assert any("5 wheels" in e for e in errors), errors
 
 
 def test_too_many_wheels_fails(tmp_path: Path) -> None:
     _good_dist(tmp_path)
-    # A 7th valid abi3 wheel (distinct platform, same version) — only the count check
+    # A 6th valid abi3 wheel (distinct platform, same version) — only the count check
     # should fire, proving the gate rejects over-count as well as under-count.
     _touch(tmp_path, "pygrit-0.1.0-cp311-abi3-macosx_14_0_arm64.whl")
     errors = check_inventory(tmp_path)
-    assert any("6 wheels" in e for e in errors), errors
+    assert any("5 wheels" in e for e in errors), errors
 
 
 def test_non_abi3_wheel_fails(tmp_path: Path) -> None:

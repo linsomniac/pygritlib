@@ -97,8 +97,10 @@ print(obj.kind, len(obj.data))       # obj.kind is an ObjectKind; obj.data is by
 - **Linux (glibc)** — `manylinux_2_17` wheels for x86_64 and aarch64.
 - **Linux (musl)** — `musllinux_1_2` wheels for x86_64 and aarch64 (Alpine and other
   musl-based distros / containers).
-- **macOS** — x86_64 (Intel) and arm64 (Apple silicon). grit-lib is Unix-oriented and
-  its dependencies are pure-Rust.
+- **macOS** — arm64 (Apple silicon) wheels. Intel (x86_64) Macs install from the sdist,
+  which compiles cleanly (grit-lib is Unix-oriented and its dependencies are pure-Rust);
+  no prebuilt Intel wheel is shipped because GitHub's macOS-13 Intel runners are
+  deprecated and unreliable.
 - **Windows** — **deferred** until grit-lib gains Windows support (it currently
   depends on `libc`/`nix` and is Unix-oriented).
 
@@ -246,7 +248,7 @@ These cannot be automated and must be done once before the first release:
 2. Commit to `main` and push.
 3. Create a GitHub Release with tag **`vX.Y.Z`** (final releases only — the version
    guard rejects anything that is not `vX.Y.Z`). Publishing the release builds and
-   smoke-tests the six wheels + sdist, verifies `tag == crate version` and that the
+   smoke-tests the five wheels + sdist, verifies `tag == crate version` and that the
    commit is on `main`, and publishes to PyPI automatically.
 
 ### TestPyPI dry-run (optional)

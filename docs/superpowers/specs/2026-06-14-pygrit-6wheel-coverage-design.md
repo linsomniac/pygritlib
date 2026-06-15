@@ -1,5 +1,14 @@
 # pygrit 6-Wheel Platform Coverage — Design
 
+> **Update (2026-06-15): shipped as a 5-wheel grid.** During CI validation, GitHub's
+> hosted **macOS-13 (Intel) runner never picked up the job** (stuck `queued` ~53 min vs
+> 2–3 min for every other leg) — Intel macOS runners are on GitHub's deprecation path and
+> are unreliable, and the same stall would block `release.yml`. Per maintainer decision the
+> macOS Intel (x86_64) leg was **dropped**: the shipped grid is **5 wheels** (glibc
+> x86_64/aarch64, musl x86_64/aarch64, macOS arm64), and Intel Macs install from the sdist
+> (CI verifies the sdist compiles + imports). `EXPECTED_WHEELS` is 5. The rest of this
+> document describes the original 6-target design; mentally substitute "5 / no macOS Intel".
+
 ## Goal
 
 Widen pygrit's binary-wheel coverage from 3 targets to a full 6-target grid so

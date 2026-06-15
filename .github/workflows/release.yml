@@ -3,11 +3,11 @@
 # Separate from ci.yml so the OIDC `id-token: write` permission never lives in the
 # everyday push/PR workflow. Flow:
 #   version-guard  — (release only) tag must be vX.Y.Z and equal the crate version.
-#   build          — 6 targets (linux glibc x86_64/aarch64, linux musl x86_64/aarch64,
-#                    macOS x86_64/arm64): build the abi3 wheel, assert exactly one
-#                    cp311-abi3 wheel, import-smoke it (native on glibc-x86_64 + macOS;
-#                    container on the glibc-aarch64 + musl-x86_64/aarch64 legs, arm64
-#                    via QEMU), upload.
+#   build          — 5 targets (linux glibc x86_64/aarch64, linux musl x86_64/aarch64,
+#                    macOS arm64): build the abi3 wheel, assert exactly one cp311-abi3
+#                    wheel, import-smoke it (native on glibc-x86_64 + macOS; container on
+#                    the glibc-aarch64 + musl-x86_64/aarch64 legs, arm64 via QEMU),
+#                    upload. (No macOS Intel: GitHub's macos-13 runners are deprecated.)
 #   sdist          — build the sdist with the locked maturin, source-compile +
 #                    import-smoke it, upload.
 #   publish-pypi   — (release) provenance + inventory gate, then OIDC publish to PyPI.
@@ -100,10 +100,8 @@ jobs:
             platform: linux/arm64
           # macOS — native smoke. `manylinux: auto` is a no-op here (Linux-only); it is
           # set only so every leg defines it (unique artifact names; no empty input).
-          - os: macos-13
-            target: x86_64
-            manylinux: auto
-            smoke: native
+          # (Intel x86_64 is NOT built: GitHub's macos-13 Intel runners are deprecated
+          # and queue unreliably — Intel Macs install from the sdist instead.)
           - os: macos-14
             target: aarch64
             manylinux: auto
@@ -230,7 +228,7 @@ jobs:
           pattern: "*"
           merge-multiple: true
           path: dist
-      - name: Inventory — exactly 6 wheels + 1 sdist, single version
+      - name: Inventory — exactly 5 wheels + 1 sdist, single version
         shell: bash
         run: |
           set -euo pipefail
@@ -270,7 +268,7 @@ jobs:
           pattern: "*"
           merge-multiple: true
           path: dist
-      - name: Inventory — exactly 6 wheels + 1 sdist, single version
+      - name: Inventory — exactly 5 wheels + 1 sdist, single version
         shell: bash
         run: |
           set -euo pipefail
