@@ -1,8 +1,8 @@
-"""pygrit — Python bindings for grit-lib."""
+"""pylibgrit — Python bindings for grit-lib."""
 
 import enum
 
-from pygrit._pygrit import (
+from pylibgrit._pylibgrit import (
     Blob,
     Commit,
     ConfigSet,

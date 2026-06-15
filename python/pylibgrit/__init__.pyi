@@ -1,10 +1,10 @@
-"""Type stubs for pygrit — Python bindings for grit-lib.
+"""Type stubs for pylibgrit — Python bindings for grit-lib.
 
 AIDEV-NOTE: Hand-written stub for the read-core public API. The concrete
-implementation lives in the native extension `pygrit._pygrit`; `__init__.py`
+implementation lives in the native extension `pylibgrit._pylibgrit`; `__init__.py`
 re-exports those symbols and defines `ObjectKind`. Keep this stub in sync with
 the Rust source (src/*.rs) and `__init__.py`. Verified against the runtime with
-`uv run python -m mypy.stubtest pygrit` (no allowlist needed).
+`uv run python -m mypy.stubtest pylibgrit` (no allowlist needed).
 """
 
 import enum
@@ -37,7 +37,7 @@ __all__ = [
 # --- Exceptions -----------------------------------------------------------
 
 class GritError(Exception):
-    """Base class for all pygrit errors."""
+    """Base class for all pylibgrit errors."""
 
 class RepositoryError(GritError):
     """Raised for repository-level failures (open/discover/etc.)."""

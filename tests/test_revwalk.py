@@ -75,19 +75,19 @@ def merge_repo(tmp_path: Path, git_env: dict[str, str]) -> Path:
 
 
 def test_revwalk_matches_rev_list(linear_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     expected = git_text(linear_repo, "rev-list", "HEAD").split("\n")
-    repo = pygrit.Repository.discover(str(linear_repo))
+    repo = pylibgrit.Repository.discover(str(linear_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head)]
     assert got == expected
 
 
 def test_revwalk_yields_commits(linear_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(linear_repo))
+    repo = pylibgrit.Repository.discover(str(linear_repo))
     head = repo.resolve("HEAD")
     commits = list(repo.revwalk(head))
     # newest commit first (default reverse-chronological order). grit-lib keeps the body's
@@ -98,10 +98,10 @@ def test_revwalk_yields_commits(linear_repo: Path) -> None:
 
 def test_revwalk_default_matches_rev_list_on_merge(merge_repo: Path) -> None:
     """Default order must match `git rev-list HEAD` exactly, even across a merge."""
-    import pygrit
+    import pylibgrit
 
     expected = git_text(merge_repo, "rev-list", "HEAD").split("\n")
-    repo = pygrit.Repository.discover(str(merge_repo))
+    repo = pylibgrit.Repository.discover(str(merge_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head)]
     assert got == expected
@@ -109,10 +109,10 @@ def test_revwalk_default_matches_rev_list_on_merge(merge_repo: Path) -> None:
 
 def test_revwalk_reverse(linear_repo: Path) -> None:
     """order='reverse' matches `git rev-list --reverse HEAD`."""
-    import pygrit
+    import pylibgrit
 
     expected = git_text(linear_repo, "rev-list", "--reverse", "HEAD").split("\n")
-    repo = pygrit.Repository.discover(str(linear_repo))
+    repo = pylibgrit.Repository.discover(str(linear_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head, order="reverse")]
     assert got == expected
@@ -123,13 +123,13 @@ def test_revwalk_reverse(linear_repo: Path) -> None:
 
 def test_revwalk_topo_order(merge_repo: Path) -> None:
     """order='topo' matches `git rev-list --topo-order HEAD` (differs from default here)."""
-    import pygrit
+    import pylibgrit
 
     expected = git_text(merge_repo, "rev-list", "--topo-order", "HEAD").split("\n")
     default = git_text(merge_repo, "rev-list", "HEAD").split("\n")
     # The fixture is constructed so topo and default genuinely differ.
     assert expected != default
-    repo = pygrit.Repository.discover(str(merge_repo))
+    repo = pylibgrit.Repository.discover(str(merge_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head, order="topo")]
     assert got == expected
@@ -137,10 +137,10 @@ def test_revwalk_topo_order(merge_repo: Path) -> None:
 
 def test_revwalk_date_order(merge_repo: Path) -> None:
     """order='date-order' matches `git rev-list --date-order HEAD`."""
-    import pygrit
+    import pylibgrit
 
     expected = git_text(merge_repo, "rev-list", "--date-order", "HEAD").split("\n")
-    repo = pygrit.Repository.discover(str(merge_repo))
+    repo = pylibgrit.Repository.discover(str(merge_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head, order="date-order")]
     assert got == expected
@@ -148,10 +148,10 @@ def test_revwalk_date_order(merge_repo: Path) -> None:
 
 def test_revwalk_first_parent(merge_repo: Path) -> None:
     """first_parent=True matches `git rev-list --first-parent HEAD`."""
-    import pygrit
+    import pylibgrit
 
     expected = git_text(merge_repo, "rev-list", "--first-parent", "HEAD").split("\n")
-    repo = pygrit.Repository.discover(str(merge_repo))
+    repo = pylibgrit.Repository.discover(str(merge_repo))
     head = repo.resolve("HEAD")
     got = [c.id.hex for c in repo.revwalk(head, first_parent=True)]
     assert got == expected
@@ -161,9 +161,9 @@ def test_revwalk_first_parent(merge_repo: Path) -> None:
 
 
 def test_revwalk_unknown_order_raises(linear_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(linear_repo))
+    repo = pylibgrit.Repository.discover(str(linear_repo))
     head = repo.resolve("HEAD")
     with pytest.raises(ValueError, match="unknown order"):
         list(repo.revwalk(head, order="bogus"))

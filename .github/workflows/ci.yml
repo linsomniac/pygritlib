@@ -1,4 +1,4 @@
-# CI for pygrit (PyO3 + maturin abi3 bindings to grit-lib).
+# CI for pylibgrit (PyO3 + maturin abi3 bindings to grit-lib).
 #
 # Three jobs:
 #   lint         — cargo fmt/clippy + ruff format/check (fast gate).
@@ -35,10 +35,10 @@
 #     toolchain); the native legs (linux x86_64, macОS) cover that.
 #   * The native legs install the built wheel into a CLEAN venv and run the real
 #     pytest suite + stubtest against the INSTALLED package — exercising the
-#     shipped wheel, not the source tree. The source `python/pygrit` is kept off
+#     shipped wheel, not the source tree. The source `python/pylibgrit` is kept off
 #     sys.path by running from a temp dir that contains only tests/ + conftest +
 #     the pyproject pytest config (pyproject's pythonpath=["."] then points at a
-#     dir with no source pygrit, so the installed wheel is the only importable
+#     dir with no source pylibgrit, so the installed wheel is the only importable
 #     copy). These steps fail the job on any test failure.
 #   * The sdist is built, installed into a clean venv (which compiles from source
 #     via the pinned Rust toolchain), and import-smoked — no `|| true`, so a
@@ -86,7 +86,7 @@ jobs:
       - run: uv run maturin develop --uv --locked
       - run: uv run pytest tests/ -v
       - run: uv run mypy python tests
-      - run: uv run python -m mypy.stubtest pygrit
+      - run: uv run python -m mypy.stubtest pylibgrit
 
   build-wheels:
     name: build-wheels (${{ matrix.os }} ${{ matrix.target }} ${{ matrix.manylinux }})
@@ -145,17 +145,17 @@ jobs:
           /tmp/wheeltest/bin/python -m pip install --upgrade pip
           /tmp/wheeltest/bin/pip install dist/*.whl pytest mypy
           # Stage ONLY tests/ + the pyproject pytest config in an empty dir, so the
-          # source `python/pygrit` is NOT importable. pyproject's pythonpath=["."]
-          # then resolves to this dir (no source pygrit), making the installed wheel
-          # the only `import pygrit`.
+          # source `python/pylibgrit` is NOT importable. pyproject's pythonpath=["."]
+          # then resolves to this dir (no source pylibgrit), making the installed wheel
+          # the only `import pylibgrit`.
           workdir="$(mktemp -d)"
           cp -r tests "$workdir/"
           cp pyproject.toml "$workdir/"
           cd "$workdir"
           # Prove the import comes from the installed wheel, not a source tree.
-          /tmp/wheeltest/bin/python -c "import pygrit, os; p = os.path.dirname(pygrit.__file__); print('pygrit from:', p); assert 'site-packages' in p, p"
+          /tmp/wheeltest/bin/python -c "import pylibgrit, os; p = os.path.dirname(pylibgrit.__file__); print('pylibgrit from:', p); assert 'site-packages' in p, p"
           /tmp/wheeltest/bin/python -m pytest tests/ -q
-          /tmp/wheeltest/bin/python -m mypy.stubtest pygrit
+          /tmp/wheeltest/bin/python -m mypy.stubtest pylibgrit
       - name: import-smoke the musl wheel (Alpine container)
         if: matrix.musl
         shell: bash
@@ -172,7 +172,7 @@ jobs:
             exit 1
           fi
           docker run --rm -v "$PWD/dist:/dist:ro" python:3.11-alpine \
-            sh -c "pip install /dist/${wheel[0]##*/} && python -c 'import pygrit; pygrit.Repository'"
+            sh -c "pip install /dist/${wheel[0]##*/} && python -c 'import pylibgrit; pylibgrit.Repository'"
       - name: build + install + smoke the sdist (fail hard)
         # glibc x86_64 leg only — the musl x86_64 leg also matches os+target.
         if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64' && matrix.manylinux == 'auto'
@@ -185,8 +185,8 @@ jobs:
           # the Rust toolchain set up for this job.
           python3 -m venv /tmp/sdisttest
           /tmp/sdisttest/bin/python -m pip install --upgrade pip
-          /tmp/sdisttest/bin/pip install dist/pygrit-*.tar.gz
-          /tmp/sdisttest/bin/python -c "import pygrit; pygrit.Repository"
+          /tmp/sdisttest/bin/pip install dist/pylibgrit-*.tar.gz
+          /tmp/sdisttest/bin/python -c "import pylibgrit; pylibgrit.Repository"
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux }}

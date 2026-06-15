@@ -30,7 +30,7 @@ def diff_repo(tmp_path: Path, git_env: dict[str, str]) -> Path:
 
 
 def test_diff_status_matches_git(diff_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import run_git
 
@@ -47,7 +47,7 @@ def test_diff_status_matches_git(diff_repo: Path) -> None:
         path = fields[i + 1]
         expected[path] = status[0]
         i += 2
-    repo = pygrit.Repository.discover(str(diff_repo))
+    repo = pylibgrit.Repository.discover(str(diff_repo))
     d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
     got = {}
     for e in d:
@@ -57,15 +57,15 @@ def test_diff_status_matches_git(diff_repo: Path) -> None:
 
 
 def test_diff_len(diff_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(diff_repo))
+    repo = pylibgrit.Repository.discover(str(diff_repo))
     d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
     assert len(d) == 3  # keep modified, gone deleted, added added
 
 
 def test_diffstat_matches_git(diff_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import run_git
 
@@ -83,7 +83,7 @@ def test_diffstat_matches_git(diff_repo: Path) -> None:
             ins += int(added)
         if deleted != "-":
             dele += int(deleted)
-    repo = pygrit.Repository.discover(str(diff_repo))
+    repo = pylibgrit.Repository.discover(str(diff_repo))
     stats = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD")).stats
     assert stats.files_changed == files
     assert stats.insertions == ins
@@ -92,9 +92,9 @@ def test_diffstat_matches_git(diff_repo: Path) -> None:
 
 def test_diff_iter_outlives_repo(diff_repo: Path) -> None:
     """FFI lifetime: a DiffIter must stay valid after the Diff and Repository drop."""
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(diff_repo))
+    repo = pylibgrit.Repository.discover(str(diff_repo))
     d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
     it = iter(d)
     del d
@@ -149,7 +149,7 @@ def test_diffstat_with_gitlink_matches_git(gitlink_repo: Path) -> None:
     `git --numstat`, which renders a gitlink side as the single line `Subproject commit
     <oid>` (so an ADD counts 1 insertion / 0 deletions). files_changed counts every entry.
     """
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import run_git
 
@@ -171,7 +171,7 @@ def test_diffstat_with_gitlink_matches_git(gitlink_repo: Path) -> None:
             dele += int(deleted)
     assert saw_gitlink, "fixture must include the gitlink entry in the diff"
 
-    repo = pygrit.Repository.discover(str(gitlink_repo))
+    repo = pylibgrit.Repository.discover(str(gitlink_repo))
     # Must not crash reading the gitlink commit; stats match git --numstat exactly.
     stats = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD")).stats
     assert stats.files_changed == files
@@ -189,7 +189,7 @@ def test_diffstat_propagates_read_error(
     blob oid via `git mktree --missing` (which does not verify object existence), then diff
     the empty tree against it. Reading the missing blob for stats must surface as an error.
     """
-    import pygrit
+    import pylibgrit
 
     repo = tmp_path / "missrepo"
     repo.mkdir()
@@ -218,13 +218,13 @@ def test_diffstat_propagates_read_error(
         .decode()
     )
 
-    pyrepo = pygrit.Repository.discover(str(repo))
-    a = pygrit.ObjectId.from_hex(empty_tree)
-    b = pygrit.ObjectId.from_hex(bad_tree)
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    a = pylibgrit.ObjectId.from_hex(empty_tree)
+    b = pylibgrit.ObjectId.from_hex(bad_tree)
     # The missing-blob read for stats must propagate as an error (not silently empty).
     # Stats are LAZY (FIX 5): diff() itself succeeds (it does not read the blob) and the
     # error surfaces on first .stats access. The block tolerates either location.
-    with pytest.raises(pygrit.GritError):
+    with pytest.raises(pylibgrit.GritError):
         d = pyrepo.diff(a, b)
         _ = d.stats
 
@@ -237,9 +237,9 @@ def test_diffstat_is_lazy(diff_repo: Path) -> None:
     accesses return consistent (cached) values. The missing-blob test above separately
     proves the work is deferred (the error only surfaces on .stats access).
     """
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(diff_repo))
+    repo = pylibgrit.Repository.discover(str(diff_repo))
     d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
     # Iterate statuses WITHOUT accessing .stats (no blob reads needed).
     assert sorted(e.status for e in d) == ["A", "D", "M"]
@@ -267,7 +267,7 @@ def test_diffstat_bare_cr_diverges_from_git(
     binding counts ins=3/del=1 while git counts ins=1/del=1, so the oracle assertion
     fails (xfail). This test exists to keep the divergence executable and visible.
     """
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import run_git
 
@@ -298,7 +298,7 @@ def test_diffstat_bare_cr_diverges_from_git(
         if deleted != "-":
             dele += int(deleted)
 
-    pyrepo = pygrit.Repository.discover(str(repo))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
     stats = pyrepo.diff(pyrepo.resolve("HEAD^"), pyrepo.resolve("HEAD")).stats
     # git: ins=1/del=1; binding (count_changes): ins=3/del=1 -> these differ (xfail).
     assert stats.insertions == ins

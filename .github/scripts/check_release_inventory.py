@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-DIST_NAME = "pygrit"
+DIST_NAME = "pylibgrit"
 # AIDEV-NOTE: EXPECTED_WHEELS must equal the number of build legs in the release
 # workflow's `build` matrix (.github/workflows/release.yml). Bump both together when
 # adding or removing a wheel target.

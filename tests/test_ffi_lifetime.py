@@ -16,25 +16,25 @@ from tests.gitlib import rev_parse
 
 
 def test_odb_outlives_repository(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     oid = rev_parse(simple_repo, "HEAD:a.txt")
-    repo = pygrit.Repository.discover(str(simple_repo))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
     odb = repo.odb
     del repo
     gc.collect()
     obj = odb.read(
-        pygrit.ObjectId.from_hex(oid)
+        pylibgrit.ObjectId.from_hex(oid)
     )  # Arc keeps repo alive; must not crash
     assert obj.id.hex == oid
 
 
 def test_tree_iter_outlives_tree(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     tree_oid = rev_parse(simple_repo, "HEAD^{tree}")
-    repo = pygrit.Repository.discover(str(simple_repo))
-    tree = repo.tree(pygrit.ObjectId.from_hex(tree_oid))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    tree = repo.tree(pylibgrit.ObjectId.from_hex(tree_oid))
     it = iter(tree)
     del tree
     gc.collect()
@@ -43,9 +43,9 @@ def test_tree_iter_outlives_tree(simple_repo: Path) -> None:
 
 
 def test_reference_iter_outlives_repository(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(simple_repo))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
     it = repo.references()
     del repo
     gc.collect()
@@ -55,10 +55,10 @@ def test_reference_iter_outlives_repository(simple_repo: Path) -> None:
 
 
 def test_head_reference_peel_outlives_repository(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     head_oid = rev_parse(simple_repo, "HEAD")
-    repo = pygrit.Repository.discover(str(simple_repo))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
     head = repo.head()
     del repo
     gc.collect()
@@ -67,10 +67,10 @@ def test_head_reference_peel_outlives_repository(simple_repo: Path) -> None:
 
 
 def test_revwalk_outlives_repository(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     head_oid = rev_parse(simple_repo, "HEAD")
-    repo = pygrit.Repository.discover(str(simple_repo))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
     head = repo.resolve("HEAD")
     walk = repo.revwalk(head)
     del repo

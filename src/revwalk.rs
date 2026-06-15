@@ -19,7 +19,7 @@ use crate::objects::{Commit, ObjectId};
 // an `Arc<[ObjectId]>` (the oid order). Both are owned Arcs, so the walk outlives the parent
 // Python `Repository` handle — `del repo; gc.collect()` mid-iteration must not crash (see
 // tests/test_ffi_lifetime.py).
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct RevWalk {
     repo: Arc<grit_lib::repo::Repository>,
     oids: Arc<[grit_lib::objects::ObjectId]>,

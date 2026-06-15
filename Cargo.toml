@@ -1,5 +1,5 @@
 [package]
-name = "pygrit"
+name = "pylibgrit"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -10,7 +10,7 @@ documentation = "https://github.com/linsomniac/pygrit"
 publish = false
 
 [lib]
-name = "_pygrit"
+name = "_pylibgrit"
 crate-type = ["cdylib"]
 
 [dependencies]

@@ -18,7 +18,7 @@ mod repository;
 mod revwalk;
 
 #[pymodule]
-fn _pygrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     error::register(m)?;
     m.add_class::<objects::ObjectId>()?;
     m.add_class::<objects::Object>()?;
@@ -38,11 +38,11 @@ fn _pygrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<diff::DiffEntry>()?;
     m.add_class::<diff::DiffStats>()?;
     // AIDEV-NOTE: DiffIter is an internal iterator (like TreeIter/ReferenceIter): registered
-    // on the native module but NOT exported in python/pygrit/__init__.py's __all__. Users get
+    // on the native module but NOT exported in python/pylibgrit/__init__.py's __all__. Users get
     // one via `iter(diff)`, never by constructing it directly.
     m.add_class::<diff::DiffIter>()?;
     // AIDEV-NOTE: RevWalk is an internal iterator (like TreeIter/ReferenceIter): registered
-    // on the native module but NOT exported in python/pygrit/__init__.py's __all__. Users get
+    // on the native module but NOT exported in python/pylibgrit/__init__.py's __all__. Users get
     // one via `repo.revwalk(start)`, never by constructing it directly.
     m.add_class::<revwalk::RevWalk>()?;
     Ok(())

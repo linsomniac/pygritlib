@@ -31,7 +31,7 @@ struct DiffEntryData {
 }
 
 /// A single diff entry: one changed path with a raw status letter and old/new ids.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct DiffEntry {
     data: DiffEntryData,
 }
@@ -94,7 +94,7 @@ struct DiffStatsData {
 }
 
 /// Summary line counts for a `Diff`: files changed, insertions, deletions.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct DiffStats {
     data: DiffStatsData,
 }
@@ -148,7 +148,7 @@ impl DiffStats {
 // re-surface and avoids storing a non-Clone PyErr). The `Arc<Repository>` keeps the odb alive
 // independently of the parent Python `Repository` handle (design §6). `entries` (statuses +
 // paths + oids) lives in its own `Arc<[DiffEntryData]>` shared with the iterators.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct Diff {
     repo: Arc<grit_lib::repo::Repository>,
     entries: Arc<[DiffEntryData]>,
@@ -226,7 +226,7 @@ impl Diff {
 }
 
 /// Iterator over a `Diff`'s entries; owns its own `Arc` so it outlives the `Diff`.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct DiffIter {
     entries: Arc<[DiffEntryData]>,
     idx: usize,

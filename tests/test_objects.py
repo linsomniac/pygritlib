@@ -11,11 +11,11 @@ from tests.gitlib import cat_file_data, git_text, rev_parse
 
 
 def test_commit_fields_match_git(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     oid = rev_parse(simple_repo, "HEAD")
-    repo = pygrit.Repository.discover(str(simple_repo))
-    commit = repo.commit(pygrit.ObjectId.from_hex(oid))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    commit = repo.commit(pylibgrit.ObjectId.from_hex(oid))
 
     # the commit's own id (self-describing; needed by revwalk)
     assert commit.id.hex == oid
@@ -58,11 +58,11 @@ def test_commit_fields_match_git(simple_repo: Path) -> None:
 
 
 def test_commit_message_contract(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     oid = rev_parse(simple_repo, "HEAD")
-    repo = pygrit.Repository.discover(str(simple_repo))
-    commit = repo.commit(pygrit.ObjectId.from_hex(oid))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    commit = repo.commit(pylibgrit.ObjectId.from_hex(oid))
 
     # AIDEV-NOTE: message contract — grit-lib's CommitData.message is the EXACT body
     # after the header blank line, including its trailing newline(s). The raw object
@@ -89,7 +89,7 @@ def _payload_message_body(repo: Path, oid: str) -> bytes:
 
 def test_tz_offset_parsing_non_utc(tmp_path: Path, git_env: dict[str, str]) -> None:
     """Build a repo with an explicit +0530 author/committer date to exercise tz parsing."""
-    import pygrit
+    import pylibgrit
 
     repo = tmp_path / "tzrepo"
     repo.mkdir()
@@ -113,8 +113,8 @@ def test_tz_offset_parsing_non_utc(tmp_path: Path, git_env: dict[str, str]) -> N
     g("commit", "-q", "-m", "tz commit")
 
     oid = rev_parse(repo, "HEAD")
-    pyrepo = pygrit.Repository.discover(str(repo))
-    commit = pyrepo.commit(pygrit.ObjectId.from_hex(oid))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    commit = pyrepo.commit(pylibgrit.ObjectId.from_hex(oid))
 
     # +0530 == 5*3600 + 30*60 == 19800 seconds
     assert commit.author.when[1] == 19800
@@ -125,7 +125,7 @@ def test_tz_offset_parsing_non_utc(tmp_path: Path, git_env: dict[str, str]) -> N
 
 def test_commit_multiparent_parents(tmp_path: Path, git_env: dict[str, str]) -> None:
     """A merge commit has two parents; oracle against git."""
-    import pygrit
+    import pylibgrit
 
     repo = tmp_path / "mergerepo"
     repo.mkdir()
@@ -156,8 +156,8 @@ def test_commit_multiparent_parents(tmp_path: Path, git_env: dict[str, str]) -> 
     g("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
 
     merge_oid = rev_parse(repo, "HEAD")
-    pyrepo = pygrit.Repository.discover(str(repo))
-    commit = pyrepo.commit(pygrit.ObjectId.from_hex(merge_oid))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    commit = pyrepo.commit(pylibgrit.ObjectId.from_hex(merge_oid))
 
     expected = git_text(repo, "log", "-1", "--format=%P").split()
     assert [p.hex for p in commit.parents] == expected
@@ -174,7 +174,7 @@ def test_commit_non_utf8_author_name(tmp_path: Path, git_env: dict[str, str]) ->
     """
     import pytest
 
-    import pygrit
+    import pylibgrit
 
     repo = tmp_path / "latin1repo"
     repo.mkdir()
@@ -214,8 +214,8 @@ def test_commit_non_utf8_author_name(tmp_path: Path, git_env: dict[str, str]) ->
     # Confirm the raw object actually contains the Latin-1 byte.
     assert latin1_name in cat_file_data(repo, oid)
 
-    pyrepo = pygrit.Repository.discover(str(repo))
-    commit = pyrepo.commit(pygrit.ObjectId.from_hex(oid))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    commit = pyrepo.commit(pylibgrit.ObjectId.from_hex(oid))
 
     # .name returns the exact bytes (non-UTF-8 fidelity).
     assert commit.author.name == latin1_name
@@ -237,7 +237,7 @@ def test_commit_message_error_handlers(tmp_path: Path, git_env: dict[str, str]) 
     commit object directly (git re-encodes -m messages from the locale, so we cannot smuggle
     a raw byte via `git commit`).
     """
-    import pygrit
+    import pylibgrit
 
     repo = tmp_path / "msgrepo"
     repo.mkdir()
@@ -272,8 +272,8 @@ def test_commit_message_error_handlers(tmp_path: Path, git_env: dict[str, str]) 
         .decode()
     )
 
-    pyrepo = pygrit.Repository.discover(str(repo))
-    commit = pyrepo.commit(pygrit.ObjectId.from_hex(oid))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    commit = pyrepo.commit(pylibgrit.ObjectId.from_hex(oid))
 
     # The raw 0xe9 byte survives in message_bytes.
     assert b"\xe9" in commit.message_bytes
@@ -295,13 +295,13 @@ def test_commit_message_error_handlers(tmp_path: Path, git_env: dict[str, str]) 
 
 
 def test_tree_entries_match_git(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import rev_parse, run_git
 
     tree_oid = rev_parse(simple_repo, "HEAD^{tree}")
-    repo = pygrit.Repository.discover(str(simple_repo))
-    tree = repo.tree(pygrit.ObjectId.from_hex(tree_oid))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    tree = repo.tree(pylibgrit.ObjectId.from_hex(tree_oid))
     raw = run_git(
         simple_repo, "ls-tree", "-z", tree_oid
     )  # "<mode> <type> <oid>\t<name>\0"
@@ -309,32 +309,32 @@ def test_tree_entries_match_git(simple_repo: Path) -> None:
     assert {e.name for e in tree} == expected_names
     a = next(e for e in tree if e.name == b"a.txt")
     assert a.mode == 0o100644
-    assert a.kind is pygrit.ObjectKind.BLOB
+    assert a.kind is pylibgrit.ObjectKind.BLOB
     assert a.id.hex == rev_parse(simple_repo, "HEAD:a.txt")
     d = next(e for e in tree if e.name == b"dir")
-    assert d.kind is pygrit.ObjectKind.TREE
+    assert d.kind is pylibgrit.ObjectKind.TREE
 
 
 def test_blob_data_matches_git(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import cat_file_data, rev_parse
 
     blob_oid = rev_parse(simple_repo, "HEAD:a.txt")
-    repo = pygrit.Repository.discover(str(simple_repo))
-    blob = repo.blob(pygrit.ObjectId.from_hex(blob_oid))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    blob = repo.blob(pylibgrit.ObjectId.from_hex(blob_oid))
     assert blob.data == cat_file_data(simple_repo, blob_oid)
 
 
 def test_blob_on_non_blob_raises(simple_repo: Path) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import rev_parse
 
-    repo = pygrit.Repository.discover(str(simple_repo))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
     tree_oid = rev_parse(simple_repo, "HEAD^{tree}")
-    with pytest.raises(pygrit.InvalidObjectError):
-        repo.blob(pygrit.ObjectId.from_hex(tree_oid))
+    with pytest.raises(pylibgrit.InvalidObjectError):
+        repo.blob(pylibgrit.ObjectId.from_hex(tree_oid))
 
 
 def test_typed_accessors_verify_object_kind(simple_repo: Path) -> None:
@@ -344,21 +344,21 @@ def test_typed_accessors_verify_object_kind(simple_repo: Path) -> None:
     must not be silently accepted by the typed accessor — the accessor verifies the
     ODB object's kind BEFORE parsing (mirroring blob()'s existing kind check).
     """
-    import pygrit
+    import pylibgrit
 
-    repo = pygrit.Repository.discover(str(simple_repo))
-    blob_oid = pygrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD:a.txt"))
-    tree_oid = pygrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD^{tree}"))
-    commit_oid = pygrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD"))
+    repo = pylibgrit.Repository.discover(str(simple_repo))
+    blob_oid = pylibgrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD:a.txt"))
+    tree_oid = pylibgrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD^{tree}"))
+    commit_oid = pylibgrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD"))
 
     # Mismatched kinds raise InvalidObjectError (kind verified before parsing).
-    with pytest.raises(pygrit.InvalidObjectError):
+    with pytest.raises(pylibgrit.InvalidObjectError):
         repo.commit(tree_oid)
-    with pytest.raises(pygrit.InvalidObjectError):
+    with pytest.raises(pylibgrit.InvalidObjectError):
         repo.tree(commit_oid)
-    with pytest.raises(pygrit.InvalidObjectError):
+    with pytest.raises(pylibgrit.InvalidObjectError):
         repo.tag(commit_oid)
-    with pytest.raises(pygrit.InvalidObjectError):
+    with pytest.raises(pylibgrit.InvalidObjectError):
         repo.commit(blob_oid)
 
     # Positive cases still work.
@@ -376,7 +376,7 @@ def test_typed_accessors_reject_blob_with_parseable_payload(
     by commit(). We store such a payload as a BLOB and assert commit() rejects it on
     kind, raising InvalidObjectError.
     """
-    import pygrit
+    import pylibgrit
 
     repo_dir = tmp_path / "kindrepo"
     repo_dir.mkdir()
@@ -409,14 +409,14 @@ def test_typed_accessors_reject_blob_with_parseable_payload(
         .decode()
     )
 
-    pyrepo = pygrit.Repository.discover(str(repo_dir))
+    pyrepo = pylibgrit.Repository.discover(str(repo_dir))
     # commit() must reject the blob on KIND, even though its bytes parse as a commit.
-    with pytest.raises(pygrit.InvalidObjectError):
-        pyrepo.commit(pygrit.ObjectId.from_hex(blob_oid))
+    with pytest.raises(pylibgrit.InvalidObjectError):
+        pyrepo.commit(pylibgrit.ObjectId.from_hex(blob_oid))
 
 
 def test_tag_fields_match_git(tmp_path: Path, git_env: dict[str, str]) -> None:
-    import pygrit
+    import pylibgrit
 
     from tests.gitlib import rev_parse
 
@@ -437,8 +437,8 @@ def test_tag_fields_match_git(tmp_path: Path, git_env: dict[str, str]) -> None:
         check=True,
     )
     tag_oid = rev_parse(repo, "v1")  # annotated tag object
-    pyrepo = pygrit.Repository.discover(str(repo))
-    tag = pyrepo.tag(pygrit.ObjectId.from_hex(tag_oid))
+    pyrepo = pylibgrit.Repository.discover(str(repo))
+    tag = pyrepo.tag(pylibgrit.ObjectId.from_hex(tag_oid))
     assert tag.name == b"v1"
     assert tag.target.hex == rev_parse(repo, "v1^{commit}")
     assert tag.message_bytes == b"release one\n"  # grit keeps the body's trailing LF

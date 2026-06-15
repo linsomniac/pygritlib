@@ -11,7 +11,7 @@ use crate::objects::{kind_to_py, Object, ObjectId};
 // Repository's Arc) rather than a borrow, so a Python `repo.odb` handle keeps the repo
 // alive independently of the Python `Repository` (design §6). grit-lib's Odb is reached
 // via the public `repo.odb` field.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct Odb {
     pub(crate) repo: Arc<grit_lib::repo::Repository>,
 }

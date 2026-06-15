@@ -13,7 +13,7 @@ use pyo3::prelude::*;
 // mutates, so the immutability `frozen` would enforce buys us nothing here. We hold
 // the inner ConfigSet BY VALUE (it owns its `Vec<ConfigEntry>`), so this handle is
 // fully self-contained and outlives the `Repository` it was loaded from.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct ConfigSet {
     inner: grit_lib::config::ConfigSet,
 }

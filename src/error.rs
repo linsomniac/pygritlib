@@ -1,4 +1,4 @@
-//! Exception hierarchy and error mapping for pygrit.
+//! Exception hierarchy and error mapping for pylibgrit.
 //!
 //! Maps `grit_lib::error::Error` onto a mutually-exclusive Python exception
 //! hierarchy (design §7): a base `GritError` with three direct, mutually
@@ -12,25 +12,25 @@ use pyo3::{
 };
 
 create_exception!(
-    _pygrit,
+    _pylibgrit,
     GritError,
     PyException,
-    "Base class for all pygrit errors."
+    "Base class for all pylibgrit errors."
 );
 create_exception!(
-    _pygrit,
+    _pylibgrit,
     RepositoryError,
     GritError,
     "Repository discover/open/config failure."
 );
 create_exception!(
-    _pygrit,
+    _pylibgrit,
     ObjectNotFoundError,
     GritError,
     "A requested object or ref id does not exist."
 );
 create_exception!(
-    _pygrit,
+    _pylibgrit,
     InvalidObjectError,
     GritError,
     "Malformed id or corrupt/undecodable object."

@@ -15,7 +15,7 @@ use crate::error::map_err;
 // Clone/Copy/Eq/Ord/Hash and provides to_hex/as_bytes/from_hex/from_bytes/algo)
 // rather than reimplementing hex parsing — grit-lib owns the canonical SHA-1/256
 // width logic. `frozen` makes the Python object immutable, matching the Copy oid.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 #[derive(Clone)]
 pub struct ObjectId {
     pub(crate) inner: grit_lib::objects::ObjectId,
@@ -104,7 +104,7 @@ fn decode_bytes<'py>(
 // (`Name <email> <unix-seconds> <+HHMM>`). This binding-layer type splits name/email from
 // the RAW header bytes (preserving non-UTF-8 fidelity, design §5) and derives the time via
 // grit_lib::ident::parse_signature_times on the decoded String form.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct Signature {
     name: Vec<u8>,
     email: Vec<u8>,
@@ -193,12 +193,12 @@ fn split_name_email(raw: &[u8]) -> (Vec<u8>, Vec<u8>) {
 
 // AIDEV-NOTE: `Commit` is a binding-layer typed view over grit_lib::objects::parse_commit.
 // `frozen` (immutable). author/committer are wrapped Py<Signature>; message is the EXACT
-// raw body bytes (see from_bytes). tree/parents are pygrit ObjectIds.
+// raw body bytes (see from_bytes). tree/parents are pylibgrit ObjectIds.
 //
 // AIDEV-NOTE: `id` makes a Commit self-describing — required because `revwalk` (Phase 4)
 // yields bare `Commit` objects (no surrounding oid), so each must carry its own id. The
 // caller of `from_bytes` supplies it (parse_commit does NOT compute the object's own oid).
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct Commit {
     id: ObjectId,
     tree: ObjectId,
@@ -294,7 +294,7 @@ impl Commit {
     }
 }
 
-// AIDEV-NOTE: ObjectKind is a Python enum.IntEnum defined in python/pygrit/__init__.py.
+// AIDEV-NOTE: ObjectKind is a Python enum.IntEnum defined in python/pylibgrit/__init__.py.
 // Native PyO3 enums lack .name and type-iteration, so kind getters return the IntEnum
 // member instead. We cache the class once and construct members by integer value.
 // The discriminants here MUST match the IntEnum values in __init__.py (asserted by a test).
@@ -309,21 +309,21 @@ fn object_kind_discriminant(k: grit_lib::objects::ObjectKind) -> i32 {
     }
 }
 
-/// Convert a grit-lib object kind into the public `pygrit.ObjectKind` IntEnum member.
+/// Convert a grit-lib object kind into the public `pylibgrit.ObjectKind` IntEnum member.
 pub fn kind_to_py(py: Python<'_>, k: grit_lib::objects::ObjectKind) -> PyResult<Py<PyAny>> {
     let cls = OBJECT_KIND_CLS.get_or_try_init(py, || -> PyResult<Py<PyAny>> {
-        Ok(py.import("pygrit")?.getattr("ObjectKind")?.unbind())
+        Ok(py.import("pylibgrit")?.getattr("ObjectKind")?.unbind())
     })?;
     let member = cls.bind(py).call1((object_kind_discriminant(k),))?;
     Ok(member.unbind())
 }
 
 // AIDEV-NOTE: `Object` is the value `Odb::read` returns, surfaced to Python. It is
-// `frozen` (immutable). `kind` is stored as the already-constructed pygrit.ObjectKind
+// `frozen` (immutable). `kind` is stored as the already-constructed pylibgrit.ObjectKind
 // IntEnum member (built once at read time via kind_to_py) so the getter can hand back
-// the singleton (identity-comparable: `obj.kind is pygrit.ObjectKind.BLOB`). `data` is
+// the singleton (identity-comparable: `obj.kind is pylibgrit.ObjectKind.BLOB`). `data` is
 // an `Arc<[u8]>` so the payload can later be shared with typed views without copying.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct Object {
     id: ObjectId,
     kind: Py<PyAny>,
@@ -379,7 +379,7 @@ struct TreeEntryData {
 }
 
 /// A single entry in a Git tree (one name → object id, with a file mode).
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct TreeEntry {
     data: TreeEntryData,
 }
@@ -404,7 +404,7 @@ impl TreeEntry {
         ObjectId::from_inner(self.data.oid)
     }
 
-    /// The `pygrit.ObjectKind` derived from the mode (see `mode_to_kind`).
+    /// The `pylibgrit.ObjectKind` derived from the mode (see `mode_to_kind`).
     #[getter]
     fn kind(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         kind_to_py(py, mode_to_kind(self.data.mode))
@@ -412,7 +412,7 @@ impl TreeEntry {
 }
 
 /// A parsed Git tree object: an iterable, len-able collection of `TreeEntry`.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct Tree {
     entries: Arc<[TreeEntryData]>,
 }
@@ -453,7 +453,7 @@ impl Tree {
 }
 
 /// Iterator over a `Tree`'s entries; owns its own `Arc` so it outlives the `Tree`.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct TreeIter {
     entries: Arc<[TreeEntryData]>,
     idx: usize,
@@ -474,7 +474,7 @@ impl TreeIter {
 
 // AIDEV-NOTE: `Blob` owns its bytes via `Arc<[u8]>` (shared with the odb read's payload,
 // no copy). `frozen` (immutable). The blob payload is the raw object body verbatim.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct Blob {
     data: Arc<[u8]>,
 }
@@ -507,7 +507,7 @@ impl Blob {
 // "release one\n" (git appends a trailing LF to `-m` messages), TagData.message ==
 // "release one\n", i.e. it KEEPS the body's own trailing newline. We surface those bytes
 // unmodified, so `tag.message_bytes` == the tag object's message section verbatim.
-#[pyclass(frozen, module = "pygrit._pygrit")]
+#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
 pub struct Tag {
     target: ObjectId,
     name: Vec<u8>,

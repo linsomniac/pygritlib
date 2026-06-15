@@ -61,7 +61,7 @@ fn bytes_to_pathbuf(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
 // hand out an `Odb` that clones the Arc and outlives this Python `Repository` handle
 // (design §6: a child Odb keeps the repo alive). grit-lib exposes git_dir/work_tree/odb
 // as PUBLIC FIELDS (no getter methods); is_bare() is the only method here.
-#[pyclass(module = "pygrit._pygrit")]
+#[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct Repository {
     pub(crate) inner: Arc<grit_lib::repo::Repository>,
 }

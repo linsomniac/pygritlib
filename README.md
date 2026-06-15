@@ -1,8 +1,8 @@
-# pygrit
+# pylibgrit
 
 Native Python bindings for [`grit-lib`](https://crates.io/crates/grit-lib) — the
 core Rust library of [gitbutlerapp/grit](https://github.com/gitbutlerapp/grit), a
-from-scratch reimplementation of Git in Rust. pygrit is built with
+from-scratch reimplementation of Git in Rust. pylibgrit is built with
 [PyO3](https://pyo3.rs) and packaged as an `abi3` wheel with
 [maturin](https://maturin.rs). This first release is a thin, **read-core** Python
 façade over grit-lib: discover/open repositories, read objects
@@ -42,11 +42,11 @@ The wheel is tagged `cp311-abi3-<platform>` and works on CPython 3.11+.
 ## Quickstart
 
 ```python
-import pygrit
+import pylibgrit
 
 # Discover the repository containing the given path (walks upward to find .git).
-repo = pygrit.Repository.discover(".")
-# Or open an explicit git dir:  pygrit.Repository.open("/path/to/.git")
+repo = pylibgrit.Repository.discover(".")
+# Or open an explicit git dir:  pylibgrit.Repository.open("/path/to/.git")
 
 # Resolve HEAD to an ObjectId, then read the commit it points at.
 head = repo.resolve("HEAD")          # ObjectId  (also resolves "main", "HEAD~2", hex, ...)
@@ -107,7 +107,7 @@ print(obj.kind, len(obj.data))       # obj.kind is an ObjectKind; obj.data is by
 ## Byte / text policy
 
 Git data is binary: paths, ref names, author/committer fields, and messages are
-not guaranteed to be UTF-8. pygrit therefore returns git data as **`bytes`** by
+not guaranteed to be UTF-8. pylibgrit therefore returns git data as **`bytes`** by
 default and offers **opt-in decoded accessors** so decoding is always your explicit
 choice:
 
@@ -121,7 +121,7 @@ choice:
 
 ## Exception hierarchy
 
-All pygrit errors derive from a single base so you can catch broadly or narrowly:
+All pylibgrit errors derive from a single base so you can catch broadly or narrowly:
 
 ```
 GritError                 (base — also the catch-all for unmapped grit-lib errors)
@@ -160,11 +160,11 @@ behavior:
 
 ## Security considerations / untrusted repositories
 
-pygrit is a thin binding over grit-lib 0.4.1 and **inherits its behavior**. It is
+pylibgrit is a thin binding over grit-lib 0.4.1 and **inherits its behavior**. It is
 intended for **trusted, local repositories** and is **not hardened against
 adversarial repository content**. The caveats below are upstream characteristics of
 grit-lib 0.4.1 that cannot be fixed in the binding layer; they are candidates for
-future hardening. Do not point pygrit at repositories you do not control without the
+future hardening. Do not point pylibgrit at repositories you do not control without the
 external mitigations noted.
 
 - **No resource limits on object reads (DoS).** grit-lib decompresses loose objects
@@ -186,10 +186,10 @@ external mitigations noted.
 
 ## How it maps to grit-lib
 
-pygrit is a documented Python **façade** over grit-lib, not a literal 1:1
+pylibgrit is a documented Python **façade** over grit-lib, not a literal 1:1
 re-export. grit-lib 0.4.1 exposes a free-function / data-struct style API (public
 fields, free functions taking `&Repository`/`&Odb`/`git_dir`, and `parse_*`
-functions over raw bytes); pygrit constructs the ergonomic Python classes
+functions over raw bytes); pylibgrit constructs the ergonomic Python classes
 (`Repository`, typed object views, `Reference`, `Signature`) on top of those
 primitives. The complete, verified mapping — exact module paths, signatures,
 return/error types, and the error → exception table — lives in
@@ -197,17 +197,17 @@ return/error types, and the error → exception table — lives in
 
 ## Version compatibility
 
-pygrit pins grit-lib **exactly** (`=` pin) with a committed `Cargo.lock` and
+pylibgrit pins grit-lib **exactly** (`=` pin) with a committed `Cargo.lock` and
 `--locked` builds for reproducibility (the published crate fully exposes read-core,
 so no git-revision fallback is used).
 
-| pygrit | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
+| pylibgrit | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.1.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | read-core release |
 
 ## Releasing
 
-pygrit publishes to PyPI via [trusted publishing](https://docs.pypi.org/trusted-publishers/)
+pylibgrit publishes to PyPI via [trusted publishing](https://docs.pypi.org/trusted-publishers/)
 (OpenID Connect) — no API tokens are stored in the repo. Publishing a GitHub Release
 runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which rebuilds
 the wheels + sdist with the same build recipe CI uses (released glibc Linux wheels
@@ -220,7 +220,7 @@ These cannot be automated and must be done once before the first release:
 
 1. **Register the PyPI "pending publisher"** at
    <https://pypi.org/manage/account/publishing/>:
-   - PyPI Project Name: `pygrit`
+   - PyPI Project Name: `pylibgrit`
    - Owner: `linsomniac`
    - Repository name: `pygrit`
    - Workflow name: `release.yml`
@@ -228,7 +228,7 @@ These cannot be automated and must be done once before the first release:
 
    For the dry-run path, repeat at <https://test.pypi.org/manage/account/publishing/>
    with Environment name `testpypi`. A pending publisher does **not** reserve the
-   name, so cut the first real release promptly to claim `pygrit`.
+   name, so cut the first real release promptly to claim `pylibgrit`.
 
 2. **Create the protected GitHub Environments** (Settings → Environments). GitHub
    silently auto-creates an *unprotected* environment if a workflow merely
@@ -242,7 +242,7 @@ These cannot be automated and must be done once before the first release:
 ### Cutting a release
 
 1. Bump the version in **both** `Cargo.toml` (`[package] version`) **and**
-   `Cargo.lock`: edit `Cargo.toml`, then run `cargo update -p pygrit` (or `cargo
+   `Cargo.lock`: edit `Cargo.toml`, then run `cargo update -p pylibgrit` (or `cargo
    build` without `--locked`) so the lockfile matches. The workflow's `cargo
    metadata --locked` version guard fails if `Cargo.lock` is stale.
 2. Commit to `main` and push.
