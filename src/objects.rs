@@ -114,6 +114,26 @@ pub struct Signature {
 
 #[pymethods]
 impl Signature {
+    // AIDEV-NOTE: Write-side constructor. `when` is (unix_seconds, utc_offset_seconds); the
+    // offset is signed and in SECONDS (e.g. +05:30 -> 19800). name/email are raw bytes for
+    // non-UTF-8 fidelity (design §5). The Git wire form is produced by `wire_bytes`/`raw`.
+    #[new]
+    #[pyo3(signature = (name, email, when))]
+    fn new(name: Vec<u8>, email: Vec<u8>, when: (i64, i32)) -> Self {
+        Self {
+            name,
+            email,
+            when_secs: when.0,
+            when_offset_secs: when.1,
+        }
+    }
+
+    /// The Git wire ident bytes: `Name <email> <unix-seconds> <+HHMM>`.
+    #[getter]
+    fn raw<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.wire_bytes())
+    }
+
     /// The identity name as raw bytes (non-UTF-8 fidelity; design §5).
     #[getter]
     fn name<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
@@ -169,6 +189,29 @@ impl Signature {
             when_offset_secs,
         }
     }
+
+    // AIDEV-NOTE: Serialize this identity to Git wire form. Used by `raw` and by the commit/
+    // tag builders (which place these exact bytes into CommitData.author_raw / the tag tagger
+    // header) so produced object OIDs are byte-identical to git's.
+    pub(crate) fn wire_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&self.name);
+        out.extend_from_slice(b" <");
+        out.extend_from_slice(&self.email);
+        out.extend_from_slice(b"> ");
+        out.extend_from_slice(self.when_secs.to_string().as_bytes());
+        out.push(b' ');
+        out.extend_from_slice(format_tz_offset(self.when_offset_secs).as_bytes());
+        out
+    }
+}
+
+// AIDEV-NOTE: Format a signed second-offset as Git's `+HHMM`/`-HHMM` timezone field.
+// e.g. 0 -> "+0000", 19800 -> "+0530", -28800 -> "-0800".
+fn format_tz_offset(secs: i32) -> String {
+    let sign = if secs < 0 { '-' } else { '+' };
+    let a = secs.abs();
+    format!("{sign}{:02}{:02}", a / 3600, (a % 3600) / 60)
 }
 
 // AIDEV-NOTE: Split `Name <email> ...` from raw ident bytes. We locate the LAST `<` and the

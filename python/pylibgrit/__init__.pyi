@@ -85,6 +85,9 @@ class Object:
 
 @final
 class Signature:
+    def __init__(self, name: bytes, email: bytes, when: tuple[int, int]) -> None: ...
+    @property
+    def raw(self) -> bytes: ...
     @property
     def name(self) -> bytes: ...
     @property
