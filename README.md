@@ -4,11 +4,13 @@ Native Python bindings for [`grit-lib`](https://crates.io/crates/grit-lib) — t
 core Rust library of [gitbutlerapp/grit](https://github.com/gitbutlerapp/grit), a
 from-scratch reimplementation of Git in Rust. pylibgrit is built with
 [PyO3](https://pyo3.rs) and packaged as an `abi3` wheel with
-[maturin](https://maturin.rs). This first release is a thin, **read-core** Python
-façade over grit-lib: discover/open repositories, read objects
+[maturin](https://maturin.rs). pylibgrit is a thin Python façade over grit-lib
+covering both **reading** — discover/open repositories, read objects
 (commit/tree/blob/tag), list and resolve references, walk history, diff commits,
-and read config — all in-process, with no external `git` binary required at
-runtime and no system C libraries to build.
+and read config — and a **local write surface** (since 0.2.0): write objects,
+stage an index, build trees, create commit/tag objects, and mutate refs. Everything
+runs in-process, with no external `git` binary required at runtime and no system C
+libraries to build.
 
 ## Install / build from source
 
@@ -89,6 +91,63 @@ obj = repo.odb.read(head)
 print(obj.kind, len(obj.data))       # obj.kind is an ObjectKind; obj.data is bytes
 ```
 
+## Writing (local write-core)
+
+Since **0.2.0**, pylibgrit exposes a **local write surface** — enough to build commits
+and move refs entirely in-process. It mirrors git's plumbing (write object → stage index
+→ write tree → create commit → update ref), and `create_commit`/`create_tag` produce
+**byte-identical object ids** to git.
+
+```python
+import pylibgrit
+from pylibgrit import ObjectKind, Signature
+
+repo = pylibgrit.Repository.open("/path/to/.git")     # or .discover(".")
+
+# 1. Write a blob straight to the object database (== git hash-object -w).
+blob = repo.odb.write(ObjectKind.BLOB, b"hello\n")
+#    repo.odb.hash(kind, data) computes the oid WITHOUT writing it.
+
+# 2. Stage entries into the index, then persist it.
+idx = repo.index()
+idx.add(b"greeting.txt", blob, 0o100644)   # stage a blob already in the odb
+# idx.stage(b"path/in/worktree")           # OR hash a real working-tree file (needs a work tree)
+idx.write()                                # write .git/index   (len(idx) / `for e in idx: ...`)
+
+# 3. Build a tree object from the index (== git write-tree).
+tree = idx.write_tree()                    # -> ObjectId
+
+# 4. Create a commit object (== git commit-tree). Pure: returns the oid, moves no ref.
+#    Signature is (name, email, (unix_seconds, tz_offset_seconds)).
+me = Signature(b"Ada", b"ada@example.com", (1718000000, 0))
+commit = repo.create_commit(tree, parents=[], author=me, committer=me, message=b"init\n")
+#    For byte-exact ids with unusual identities, pass raw header bytes instead of a Signature:
+#      repo.create_commit(tree, [], author_raw=b"Ada <ada@x> 1718000000 +0000",
+#                         committer_raw=b"...", message=b"...")
+
+# 5. Move a branch at the new commit, and point HEAD at it.
+repo.update_ref(b"refs/heads/main", commit, create=True)   # create-only: fails if it exists
+repo.set_head(b"refs/heads/main")
+#    Other ref ops: expected_old= for compare-and-swap, message=/signer= to write a reflog,
+#    delete_ref(...), set_symbolic_ref(...), append_reflog(...).
+
+# Annotated tags create a tag OBJECT; point a ref at it separately.
+tag = repo.create_tag(commit, ObjectKind.COMMIT, b"v1", message=b"release\n", tagger=me)
+repo.update_ref(b"refs/tags/v1", tag, create=True)
+```
+
+**Ref update modes** (`update_ref`): the default overwrites; `create=True` is create-only
+(fails if the ref exists); `expected_old=<oid>` is a compare-and-swap. Compare-and-swap is
+**best-effort** — grit-lib 0.4.1 has no atomic CAS primitive, so it is a read→compare→write
+without a held lock (it catches the common non-concurrent case but is not a hard guarantee
+against another writer in the window).
+
+**Write-input validation.** Constructing a `Signature` rejects `<`, `>`, NUL, or newline in
+the name/email and out-of-range / non-minute timezone offsets; index paths must be clean
+relative paths (no leading/trailing `/`, no `.`/`..` components); ref names are validated by
+git's ref-format rules; reflog messages and tag names reject NUL/CR/LF. These prevent object/
+record injection, path traversal, and a grit-lib stack-overflow on malformed index paths.
+
 ## Supported Python / platforms
 
 - **CPython 3.11+** — wheels are `abi3-py311`, so a single wheel works on 3.11 and
@@ -133,10 +192,9 @@ GritError                 (base — also the catch-all for unmapped grit-lib err
 I/O failures surface as `OSError` (with `errno` where available), and the
 originating grit-lib message is included in the raised exception's message text.
 
-## Known limitations (v1)
+## Known limitations
 
-This release is honest about where grit-lib 0.4.1's API constrains byte-fidelity or
-behavior:
+This is honest about where grit-lib 0.4.1's API constrains byte-fidelity or behavior:
 
 - **Diff paths are UTF-8-decoded by grit-lib** (`Option<String>`), so a non-UTF-8
   diff path is *not* byte-preserved — unlike `TreeEntry.name`, which is exact
@@ -155,8 +213,16 @@ behavior:
   `String` (via `to_string_lossy`), so non-UTF-8 ref names are *not* byte-faithful —
   distinct non-UTF-8 names can collide on the U+FFFD replacement character. This is
   unlike `TreeEntry.name`, which is exact bytes.
-- **Mutating operations are out of scope** for this read-core release: writing
-  objects/refs/index, commit creation, merge, and any networking are not exposed.
+- **Annotated-tag write fidelity:** grit-lib's `TagData` stores the tag name, tagger, and
+  message as UTF-8 `String` (no raw-byte fields), so written tags must be UTF-8 and the tag
+  message's trailing newline is normalized — unlike commits, whose ids are byte-exact via the
+  `author_raw`/`committer_raw`/raw-message escape hatches.
+- **Ref compare-and-swap is best-effort (TOCTOU):** grit-lib 0.4.1 exposes no atomic
+  compare-and-swap primitive, so `expected_old=`/`create=` do a read→compare→write without a
+  held lock — they catch the common non-concurrent case but are not a hard guarantee against a
+  concurrent writer. Atomic ref updates are planned for a later release.
+- **Still out of scope (planned later phases):** working-tree checkout, three-way merge,
+  repository init, and any networking (fetch/push/clone) are not yet exposed.
 
 ## Security considerations / untrusted repositories
 
@@ -184,6 +250,14 @@ external mitigations noted.
   crafted repository can make `references()` traverse outside the repository or loop
   through large trees. Avoid enumerating refs on untrusted repositories.
 
+The **write surface** (0.2.0) validates its own inputs at the binding layer — ref names (git
+ref-format rules), index paths (no `..`/absolute components, no leading-slash), `Signature`
+fields, and reflog/tag text — which closes the path-traversal, object/record-injection, and
+malformed-index crash (grit-lib stack-overflow) vectors those calls would otherwise inherit.
+One upstream write caveat remains: grit-lib writes objects through a deterministic temp file,
+so concurrent *identical* object writes can race (this needs a grit-lib-level fix); distinct
+concurrent writes are unaffected.
+
 ## How it maps to grit-lib
 
 pylibgrit is a documented Python **façade** over grit-lib, not a literal 1:1
@@ -203,6 +277,7 @@ so no git-revision fallback is used).
 
 | pylibgrit | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| 0.2.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | + local write-core |
 | 0.1.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | read-core release |
 
 ## Releasing
