@@ -9,7 +9,7 @@ the Rust source (src/*.rs) and `__init__.py`. Verified against the runtime with
 
 import enum
 import os
-from typing import Callable, Iterator, final
+from typing import Iterator, final
 
 __all__ = [
     "AuthenticationError",
@@ -348,7 +348,6 @@ class Repository:
         username: str | None = None,
         password: str | None = None,
         use_credential_helpers: bool = True,
-        progress: Callable[[bytes], None] | None = None,
     ) -> Repository: ...
     @property
     def git_dir(self) -> bytes: ...
@@ -479,7 +478,6 @@ class Repository:
         username: str | None = None,
         password: str | None = None,
         use_credential_helpers: bool = True,
-        progress: Callable[[bytes], None] | None = None,
     ) -> FetchReport: ...
 
 # --- Networking (read path) -----------------------------------------------

@@ -8,7 +8,6 @@ use pyo3::types::PyBytes;
 use grit_lib::transfer::{FetchOptions, FetchOutcome, TagMode, UpdateMode};
 
 use crate::error::{map_err, net_map_err, network_err};
-use crate::net_progress::PyProgress;
 use crate::net_transport::{classify, git_connect, Scheme};
 
 // AIDEV-NOTE: One advertised remote ref. `name`/`symref_target` are bytes (house style: ref names
@@ -203,12 +202,9 @@ fn update_mode_str(m: UpdateMode) -> &'static str {
 // the FetchOutcome to a FetchReport. The git:// connection is `!Send`, so it is constructed and
 // consumed entirely inside one allow_threads closure (never crossing the boundary).
 //
-// Progress-callback error semantics: grit's `Progress::message` is INFALLIBLE, so a raising
-// `progress` callback does NOT abort the in-flight transfer — the fetch runs to completion (and grit
-// writes its refs). The binding CAPTURES the callback's exception during the transfer and, after it
-// returns, surfaces it via `take_error()` and discards the report, treating the fetch as failed even
-// though grit completed it.
-#[allow(clippy::too_many_arguments)]
+// Progress is unconditionally NoProgress: grit-lib 0.4.1 sends `no-progress` in every upload-pack
+// request, so the Progress::message hook never fires over the network. The progress= parameter was
+// dropped from the public API to avoid a misleading dead knob.
 pub(crate) fn fetch_raw(
     py: Python<'_>,
     git_dir: &std::path::Path,
@@ -217,20 +213,15 @@ pub(crate) fn fetch_raw(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
-    progress: Option<Py<PyAny>>,
 ) -> PyResult<FetchOutcome> {
-    let mut prog = PyProgress::new(progress);
     let outcome = match classify(url)? {
-        Scheme::Git => {
-            let result = py.allow_threads(|| -> Result<FetchOutcome, grit_lib::error::Error> {
+        Scheme::Git => py
+            .allow_threads(|| -> Result<FetchOutcome, grit_lib::error::Error> {
                 let mut conn = git_connect(url, 0)?;
-                grit_lib::fetch::fetch_remote(git_dir, &mut *conn, opts, &mut prog)
-            });
-            if let Some(e) = prog.take_error() {
-                return Err(e);
-            }
-            result.map_err(net_map_err)?
-        }
+                let mut np = grit_lib::fetch::NoProgress;
+                grit_lib::fetch::fetch_remote(git_dir, &mut *conn, opts, &mut np)
+            })
+            .map_err(net_map_err)?,
         Scheme::Http => {
             let (clean_url, userinfo) = crate::net_transport::split_userinfo(url);
             let client = crate::net_credentials::build_http_client(
@@ -240,13 +231,11 @@ pub(crate) fn fetch_raw(
                 merge_pass(password, &userinfo),
                 use_credential_helpers,
             )?;
-            let result = py.allow_threads(|| {
-                grit_lib::transport::http::http_fetch(&client, git_dir, &clean_url, opts, &mut prog)
-            });
-            if let Some(e) = prog.take_error() {
-                return Err(e);
-            }
-            result.map_err(net_map_err)?
+            py.allow_threads(|| {
+                let mut np = grit_lib::fetch::NoProgress;
+                grit_lib::transport::http::http_fetch(&client, git_dir, &clean_url, opts, &mut np)
+            })
+            .map_err(net_map_err)?
         }
     };
     Ok(outcome)
@@ -325,7 +314,6 @@ pub(crate) fn fetch_method(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
-    progress: Option<Py<PyAny>>,
 ) -> PyResult<FetchReport> {
     let opts = build_fetch_options(refspecs, tags, prune)?;
     let git_dir = repo.git_dir.clone();
@@ -337,7 +325,6 @@ pub(crate) fn fetch_method(
         username,
         password,
         use_credential_helpers,
-        progress,
     )?;
     build_report(py, outcome)
 }
@@ -390,7 +377,6 @@ fn write_branch_upstream(
 // map_err (GritError/PyOSError) so a local failure is not mis-surfaced as NetworkError. Bare/shallow
 // clone are deferred (spec §1). LIMITATION: clone into a non-empty existing path RE-INITS over it
 // (init_repository has no already-exists guard) rather than refusing like `git clone` — deferred.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn clone_impl(
     py: Python<'_>,
     url: String,
@@ -399,7 +385,6 @@ pub(crate) fn clone_impl(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
-    progress: Option<Py<PyAny>>,
 ) -> PyResult<crate::repository::Repository> {
     classify(&url)?; // fail fast on an unsupported scheme before touching the filesystem
 
@@ -428,7 +413,6 @@ pub(crate) fn clone_impl(
         username,
         password,
         use_credential_helpers,
-        progress,
     )?;
 
     // 4. resolve which branch to check out.

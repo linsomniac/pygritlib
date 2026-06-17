@@ -120,9 +120,11 @@ impl Repository {
     // AIDEV-NOTE: Clone `url` into `path` (== `git clone`, worktree only). Assembles init + origin
     // config + fetch + branch/HEAD + checkout (grit has no clone porcelain). Uses tags="all" (git
     // clone fetches all tags). bare/shallow deferred (spec §1). Returns the opened Repository.
+    // Progress is unconditionally NoProgress (grit-lib 0.4.1 forces no-progress; progress= param
+    // dropped to avoid a misleading dead knob).
     #[staticmethod]
     #[pyo3(signature = (url, path, *, branch=None, username=None, password=None,
-                        use_credential_helpers=true, progress=None))]
+                        use_credential_helpers=true))]
     #[allow(clippy::too_many_arguments)]
     fn clone(
         py: Python<'_>,
@@ -132,7 +134,6 @@ impl Repository {
         username: Option<String>,
         password: Option<String>,
         use_credential_helpers: bool,
-        progress: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         let path = extract_path(path)?;
         crate::remote::clone_impl(
@@ -143,7 +144,6 @@ impl Repository {
             username,
             password,
             use_credential_helpers,
-            progress,
         )
     }
 
@@ -1001,9 +1001,10 @@ impl Repository {
 
     // AIDEV-NOTE: Fetch from `url` into this repo (== `git fetch`). Default refspec fetches all
     // heads into refs/remotes/origin/*. git:// applies the returned ref updates here; https
-    // (http_fetch) self-applies. Optional progress= is a callable receiving side-band-2 bytes.
+    // (http_fetch) self-applies. Progress is unconditionally NoProgress (grit-lib 0.4.1 forces
+    // no-progress; progress= param dropped to avoid a misleading dead knob).
     #[pyo3(signature = (url, refspecs=None, *, tags="following", prune=false,
-                        username=None, password=None, use_credential_helpers=true, progress=None))]
+                        username=None, password=None, use_credential_helpers=true))]
     #[allow(clippy::too_many_arguments)]
     fn fetch(
         &self,
@@ -1015,7 +1016,6 @@ impl Repository {
         username: Option<String>,
         password: Option<String>,
         use_credential_helpers: bool,
-        progress: Option<Py<PyAny>>,
     ) -> PyResult<crate::remote::FetchReport> {
         crate::remote::fetch_method(
             py,
@@ -1027,7 +1027,6 @@ impl Repository {
             username,
             password,
             use_credential_helpers,
-            progress,
         )
     }
 

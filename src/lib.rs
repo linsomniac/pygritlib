@@ -15,7 +15,6 @@ mod error;
 mod index;
 mod merge;
 mod net_credentials;
-mod net_progress;
 mod net_transport;
 mod objects;
 mod odb;
