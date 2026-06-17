@@ -5,12 +5,13 @@ core Rust library of [gitbutlerapp/grit](https://github.com/gitbutlerapp/grit), 
 from-scratch reimplementation of Git in Rust. pylibgrit is built with
 [PyO3](https://pyo3.rs) and packaged as an `abi3` wheel with
 [maturin](https://maturin.rs). pylibgrit is a thin Python façade over grit-lib
-covering both **reading** — discover/open repositories, read objects
-(commit/tree/blob/tag), list and resolve references, walk history, diff commits,
-and read config — and a **local write surface** (since 0.2.0): write objects,
-stage an index, build trees, create commit/tag objects, and mutate refs. Everything
-runs in-process, with no external `git` binary required at runtime and no system C
-libraries to build.
+covering **reading** — discover/open repositories, read objects (commit/tree/blob/tag),
+list and resolve references, walk history, diff commits, and read config — a **local
+write surface** (since 0.2.0): write objects, stage an index, build trees, create
+commit/tag objects, and mutate refs — and **read-path networking** (since 0.3.0): clone,
+fetch, and list remote refs over git:// and https, with no system OpenSSL or libcurl
+required. Everything runs in-process, with no external `git` binary required at runtime
+and no system C libraries to build.
 
 ## Install / build from source
 
@@ -148,6 +149,108 @@ relative paths (no leading/trailing `/`, no `.`/`..` components); ref names are 
 git's ref-format rules; reflog messages and tag names reject NUL/CR/LF. These prevent object/
 record injection, path traversal, and a grit-lib stack-overflow on malformed index paths.
 
+## Networking (clone / fetch / ls-remote)
+
+Since **0.3.0**, pylibgrit exposes a **read-path networking surface** — clone from a
+remote, fetch into an existing repository, or list a remote's refs without cloning —
+over **git://** and **https** (the `http-ureq` / rustls stack is bundled by default; no
+system OpenSSL or libcurl required). Push, SSH transport, shallow/depth, bare/mirror
+clone, and submodules are not yet supported.
+
+### Entry points
+
+```python
+# Top-level function — no local repo needed.
+pylibgrit.ls_remote(
+    url: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    use_credential_helpers: bool = True,
+    heads: bool = False,
+    tags: bool = False,
+) -> list[RemoteRef]
+
+# Class method — init + origin config + fetch + checkout (worktree clone).
+# Fetches ALL tags (tags="all"), like `git clone`.
+# Sets branch.<name>.remote/merge upstream tracking.
+pylibgrit.Repository.clone(
+    url: str,
+    path: str | bytes | os.PathLike[str],
+    *,
+    branch: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    use_credential_helpers: bool = True,
+) -> Repository
+
+# Instance method — fetch into an existing repo.
+# Default refspec: +refs/heads/*:refs/remotes/origin/*
+# tags ∈ {"none", "following", "all"}  (default "following")
+repo.fetch(
+    url: str,
+    refspecs: list[str] | None = None,
+    *,
+    tags: str = "following",
+    prune: bool = False,
+    username: str | None = None,
+    password: str | None = None,
+    use_credential_helpers: bool = True,
+) -> FetchReport
+```
+
+### Value objects
+
+| Class | Fields |
+| --- | --- |
+| `RemoteRef` | `.name: bytes`, `.oid: ObjectId`, `.symref_target: bytes \| None` |
+| `RefUpdate` | `.remote_ref: bytes`, `.local_ref: bytes \| None`, `.old_oid: ObjectId \| None`, `.new_oid: ObjectId \| None`, `.mode: str`, `.note: str \| None` |
+| `FetchReport` | `.updates: list[RefUpdate]`, `.default_branch: bytes \| None` |
+
+### Exceptions
+
+`NetworkError` and `AuthenticationError` are both subclasses of `GritError` (see
+[Exception hierarchy](#exception-hierarchy)).
+
+### Authentication
+
+Credentials are resolved in this order of precedence:
+
+1. **Explicit kwargs** — `username=` / `password=` passed directly.
+2. **URL userinfo** — `https://<token>@host/path` (token-as-password style).
+3. **Git credential helpers** — queried when `use_credential_helpers=True` (the
+   default), using the standard git credential protocol.
+
+### Supported transports
+
+| Transport | Status |
+| --- | --- |
+| `https://` | Supported (rustls bundled, no system OpenSSL) |
+| `git://` | Supported |
+| `ssh://` / `git@` | Not yet supported |
+| Push / write | Not yet supported |
+| Shallow / `--depth` | Not yet supported |
+| Bare / mirror clone | Not yet supported |
+
+### Example
+
+```python
+import pylibgrit
+
+# Clone a public repo over https (the http stack is bundled).
+repo = pylibgrit.Repository.clone("https://github.com/octocat/Hello-World.git", "/tmp/hello")
+print(repo.head().peel().hex)
+
+# List a remote's branches without cloning.
+for ref in pylibgrit.ls_remote("https://github.com/octocat/Hello-World.git", heads=True):
+    print(ref.oid.hex, ref.name.decode())
+
+# Authenticated fetch (token via kwarg, or https://<token>@host/...).
+report = repo.fetch("https://github.com/me/private.git", username="x", password="TOKEN")
+for u in report.updates:
+    print(u.mode, u.remote_ref.decode())
+```
+
 ## Supported Python / platforms
 
 - **CPython 3.11+** — wheels are `abi3-py311`, so a single wheel works on 3.11 and
@@ -186,7 +289,9 @@ All pylibgrit errors derive from a single base so you can catch broadly or narro
 GritError                 (base — also the catch-all for unmapped grit-lib errors)
 ├── RepositoryError       open/discover/format-validation/ref failures
 ├── ObjectNotFoundError   a requested object is not in the object database
-└── InvalidObjectError    an object is corrupt or cannot be parsed
+├── InvalidObjectError    an object is corrupt or cannot be parsed
+├── NetworkError          a network-level failure during fetch/clone/ls-remote
+└── AuthenticationError   authentication failed or credentials were rejected
 ```
 
 I/O failures surface as `OSError` (with `errno` where available), and the
@@ -221,8 +326,16 @@ This is honest about where grit-lib 0.4.1's API constrains byte-fidelity or beha
   compare-and-swap primitive, so `expected_old=`/`create=` do a read→compare→write without a
   held lock — they catch the common non-concurrent case but are not a hard guarantee against a
   concurrent writer. Atomic ref updates are planned for a later release.
-- **Still out of scope (planned later phases):** working-tree checkout, three-way merge,
-  repository init, and any networking (fetch/push/clone) are not yet exposed.
+- **No transfer progress (grit-lib 0.4.1):** grit-lib hard-codes `no-progress` in its
+  fetch request, so there is no progress callback and one cannot be added at the binding
+  layer.
+- **`fetch(tags="following")` shared-oid quirk (grit-lib 0.4.1):** if a tag points at
+  the same commit as a fetched branch tip, grit-lib's tag-following can skip that
+  commit's objects; workaround: use `tags="all"` or `tags="none"`. `clone()` always uses
+  `tags="all"` and is unaffected.
+- **Still out of scope (planned later phases):** working-tree checkout, push, SSH
+  transport, shallow/depth clone, bare/mirror clone, submodules, and `insteadOf` URL
+  rewriting are not yet exposed.
 
 ## Security considerations / untrusted repositories
 
@@ -277,6 +390,7 @@ so no git-revision fallback is used).
 
 | pylibgrit | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| 0.3.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | + read-path networking |
 | 0.2.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | + local write-core |
 | 0.1.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | read-core release |
 
