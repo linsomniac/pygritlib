@@ -291,6 +291,8 @@ Since **0.4.0**, `repo.push` sends refs to a remote over **git://** or **https**
   - `":refs/heads/old"` — delete `refs/heads/old` on the remote.
   - A bare object id with no explicit destination (e.g. `"abc123"`) raises `ValueError` —
     use a `PushSpec` instead.
+  - A source that isn't a local branch/tag/remote ref — including `HEAD` — has no inferable
+    destination and raises `ValueError`; give an explicit one, e.g. `"HEAD:refs/heads/main"`.
 - **`PushSpec` objects** — for full control:
   `PushSpec(dst, *, src=None, force=False, delete=False, expected_old=None, expect_absent=False)`
   - `dst: bytes` — the remote ref to update.

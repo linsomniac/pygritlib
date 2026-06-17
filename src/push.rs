@@ -220,8 +220,19 @@ fn parse_one_refspec(
     let src = item.src.filter(|x| !x.is_empty());
     match src {
         None => {
+            // src is empty: a delete (`:dst`) needs a destination; a bare `:` (push all matching
+            // refs) is a distinct, unsupported git feature — report each accurately.
             let dst = item.dst.ok_or_else(|| {
-                PyValueError::new_err(format!("delete refspec {s:?} needs a destination"))
+                if item.matching {
+                    PyValueError::new_err(format!(
+                        "the matching refspec {s:?} (push all matching refs) is not supported; \
+                         specify explicit refspecs"
+                    ))
+                } else {
+                    PyValueError::new_err(format!(
+                        "delete refspec {s:?} needs a destination (e.g. \":refs/heads/<name>\")"
+                    ))
+                }
             })?;
             Ok(PushRefSpec {
                 src: None,
