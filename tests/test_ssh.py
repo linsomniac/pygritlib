@@ -43,18 +43,8 @@ def _commit(local, env, name: str, body: str) -> None:
 
     (local / name).write_text(body)
     run_git(local, "add", "-A", env=env)
-    run_git(
-        local,
-        "-c",
-        "user.name=T",
-        "-c",
-        "user.email=t@e",
-        "commit",
-        "-q",
-        "-m",
-        body.strip(),
-        env=env,
-    )
+    # Identity comes from env (GIT_AUTHOR_*/GIT_COMMITTER_* in git_env), like the rest of the suite.
+    run_git(local, "commit", "-q", "-m", body.strip(), env=env)
 
 
 def test_clone_over_ssh(ssh_server, tmp_path) -> None:
